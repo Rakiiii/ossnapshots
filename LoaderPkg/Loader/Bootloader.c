@@ -113,7 +113,20 @@ InitGraphics (
   //
   // Hint: Use GetMode/SetMode functions.
   //
+    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *info;
+    UINTN SizeOfInfo, numModes;
 
+    numModes = GraphicsOutput->Mode->MaxMode;
+
+    for (int i = 0; i < numModes; i++) {
+        Status = GraphicsOutput->QueryMode(GraphicsOutput, i, &SizeOfInfo, &info);
+        if (info->HorizontalResolution == 1400 && info->VerticalResolution == 1050) {
+            Status = GraphicsOutput->SetMode(GraphicsOutput, i);
+            if (EFI_ERROR(Status)) {
+                DEBUG((DEBUG_INFO, "Unable to set expected mode\n"));
+            }
+        }
+    }
 
   //
   // Fill screen with black.
@@ -977,7 +990,7 @@ UefiMain (
   UINTN              EntryPoint;
   VOID               *GateData;
 
-#if 1 ///< Uncomment to await debugging
+#if 0 ///< Uncomment to await debugging
   volatile BOOLEAN   Connected;
   DEBUG ((DEBUG_INFO, "JOS: Awaiting debugger connection\n"));
 
