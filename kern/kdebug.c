@@ -61,21 +61,33 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
     strncpy(info->rip_file, tmp_buf, sizeof(info->rip_file));
 
     /* Find line number corresponding to given address.
-    * Hint: note that we need the address of `call` instruction, but rip holds
-    * address of the next instruction, so we should substract 5 from it.
-    * Hint: use line_for_address from kern/dwarf_lines.c */
+     * Hint: note that we need the address of `call` instruction, but rip holds
+     * address of the next instruction, so we should substract 5 from it.
+     * Hint: use line_for_address from kern/dwarf_lines.c */
 
     // LAB 2: Your res here:
+
+    uintptr_t realAddr = addr - 5;
+
+    res = line_for_address(&addrs, realAddr, line_offset, &(info->rip_line));
+    if (res < 0) goto error;
 
     /* Find function name corresponding to given address.
-    * Hint: note that we need the address of `call` instruction, but rip holds
-    * address of the next instruction, so we should substract 5 from it.
-    * Hint: use function_by_info from kern/dwarf.c
-    * Hint: info->rip_fn_name can be not NULL-terminated,
-    * string returned by function_by_info will always be */
+     * Hint: note that we need the address of `call` instruction, but rip holds
+     * address of the next instruction, so we should substract 5 from it.
+     * Hint: use function_by_info from kern/dwarf.c
+     * Hint: info->rip_fn_name can be not NULL-terminated,
+     * string returned by function_by_info will always be */
 
     // LAB 2: Your res here:
 
+    uintptr_t func_offset;
+    char *func_buf = NULL;
+    res = function_by_info(&addrs, realAddr, offset, &func_buf, &func_offset);
+    if (res < 0) goto error;
+    strncpy(info->rip_fn_name, func_buf, sizeof(info->rip_fn_name));
+
+    info->rip_fn_addr = func_offset;
 error:
     return res;
 }
