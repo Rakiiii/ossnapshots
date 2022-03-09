@@ -91,6 +91,7 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf) {
         uint64_t offset = rip[1] - info.rip_fn_addr;
         cprintf("    %s:%d:  %s+%ld\n", info.rip_file, info.rip_line, info.rip_fn_name, offset);
 
+int mon_dumpcmos(int argc, char **argv, struct Trapframe *tf);
         rbp = *((uint64_t *)rbp);
         rip = ((uint64_t *)rbp);
     }
