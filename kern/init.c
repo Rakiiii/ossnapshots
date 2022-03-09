@@ -141,8 +141,7 @@ i386_init(void) {
     }
 
     pic_init();
-    rtc_timer_init();
-    rtc_timer_pic_interrupt();
+    timers_init();
 
     /* Framebuffer init should be done after memory init */
     fb_init();
