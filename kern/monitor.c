@@ -116,7 +116,7 @@ mon_dumpcmos(int argc, char **argv, struct Trapframe *tf) {
         if (read % 16 == 0 && read > 0) {
             cprintf("\n%02X: ", read);
         }
-        
+
         cprintf("%02X ", cmos_read8(read));
 
         ++read;
