@@ -179,6 +179,9 @@ int mon_memory(int argc, char **argv, struct Trapframe *tf) {
     return 0;
 }
 
+/* Implement timer_start (mon_start), timer_stop (mon_stop), timer_freq (mon_frequency) commands. */
+// LAB 5: Your code here:
+
 /* Kernel monitor command interpreter */
 
 static int
