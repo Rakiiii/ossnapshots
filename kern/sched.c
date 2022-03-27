@@ -5,6 +5,7 @@
 
 
 struct Taskstate cpu_ts;
+
 _Noreturn void sched_halt(void);
 
 /* Choose a user environment to run and run it */
@@ -25,12 +26,26 @@ sched_yield(void) {
      * below to halt the cpu */
 
     // LAB 3: Your code here:
-    env_run(&envs[0]);
+    int index = curenv ? (curenv - envs) + 1 : 0;
 
-    cprintf("Halt\n");
+    for (; index < NENV; ++index) {
+        if (envs[index].env_status == ENV_RUNNABLE || envs[index].env_status == ENV_RUNNING) {
+            env_run(&envs[index]);
+        }
+    }
 
-    /* No runnable environments,
-     * so just halt the cpu */
+    if (curenv) {
+        for (index = 0; index < (curenv - envs); ++index) {
+            if (envs[index].env_status == ENV_RUNNABLE || envs[index].env_status == ENV_RUNNING) {
+                env_run(&envs[index]);
+            }
+        }
+    }
+
+    if (curenv->env_status == ENV_RUNNABLE || curenv->env_status == ENV_RUNNING) {
+        env_run(curenv);
+    }
+
     sched_halt();
 }
 
@@ -44,7 +59,8 @@ sched_halt(void) {
     int i;
     for (i = 0; i < NENV; i++)
         if (envs[i].env_status == ENV_RUNNABLE ||
-            envs[i].env_status == ENV_RUNNING) break;
+            envs[i].env_status == ENV_RUNNING)
+            break;
     if (i == NENV) {
         cprintf("No runnable environments in the system!\n");
         for (;;) monitor(NULL);
