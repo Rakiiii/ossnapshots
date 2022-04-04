@@ -14,6 +14,7 @@
 #include <kern/tsc.h>
 #include <kern/timer.h>
 #include <kern/env.h>
+#include <kern/pmap.h>
 #include <kern/trap.h>
 #include <kern/kclock.h>
 
@@ -21,6 +22,8 @@
 #define MAXARGS    16
 
 /* Functions implementing monitor commands */
+
+int mon_word(int argc, char **argv, struct Trapframe *tf);
 int mon_help(int argc, char **argv, struct Trapframe *tf);
 int mon_kerninfo(int argc, char **argv, struct Trapframe *tf);
 int mon_backtrace(int argc, char **argv, struct Trapframe *tf);
@@ -28,7 +31,7 @@ int mon_dumpcmos(int argc, char **argv, struct Trapframe *tf);
 int mon_start(int argc, char **argv, struct Trapframe *tf);
 int mon_stop(int argc, char **argv, struct Trapframe *tf);
 int mon_frequency(int argc, char **argv, struct Trapframe *tf);
-int mon_word(int argc, char **argv, struct Trapframe *tf);
+int mon_memory(int argc, char **argv, struct Trapframe *tf);
 
 struct Command {
     const char *name;
@@ -164,6 +167,11 @@ mon_frequency(int argc, char **argv, struct Trapframe *tf) {
 
 /* Implement timer_start (mon_start), timer_stop (mon_stop), timer_freq (mon_frequency) commands. */
 // LAB 5: Your code here:
+
+/* Implement memory (mon_memory) command.
+ * This command should call dump_memory_lists()
+ */
+// LAB 6: Your code here
 
 /* Kernel monitor command interpreter */
 
