@@ -99,7 +99,7 @@ inline static struct List *__attribute__((always_inline))
 list_del(struct List *list) {
     // LAB 6: Your code here.
     if (!list) return list;
-		
+
     list->prev->next = list->next;
 	list->next->prev = list->prev;
 	list_init(list);
@@ -357,7 +357,7 @@ attach_region(uintptr_t start, uintptr_t end, enum PageState type) {
 
         for(class = 0; class < MAX_CLASS; class++) {
             if( (CLASS_MASK(class) & lookup_addr) || (CLASS_SIZE(class) > (end - lookup_addr)) ){
-                
+
                 class--;
                  break;
             }

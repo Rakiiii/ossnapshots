@@ -182,6 +182,11 @@ int mon_memory(int argc, char **argv, struct Trapframe *tf) {
 /* Implement timer_start (mon_start), timer_stop (mon_stop), timer_freq (mon_frequency) commands. */
 // LAB 5: Your code here:
 
+/* Implement memory (mon_memory) command.
+ * This command should call dump_memory_lists()
+ */
+// LAB 6: Your code here
+
 /* Kernel monitor command interpreter */
 
 static int
