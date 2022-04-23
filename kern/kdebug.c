@@ -105,11 +105,15 @@ find_function(const char *const fname) {
     struct Dwarf_Addrs addrs;
     load_kernel_dwarf_info(&addrs);
 
-    uintptr_t fn_offset = 0;
-    int res = naive_address_by_fname(&addrs, fname, &fn_offset);
-    if (res >= 0) return fn_offset;
-
-    res = address_by_fname(&addrs, fname, &fn_offset);
-    if (res >= 0) return fn_offset;
+	uintptr_t offset = 0;
+	if (!address_by_fname(&addrs, fname, &offset)) {
+		if (offset) {
+			return offset;
+		}
+	}
+	if (!naive_address_by_fname(&addrs, fname, &offset)) {
+		return offset;
+	}
+    
     return 0;
 }

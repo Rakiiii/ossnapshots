@@ -211,7 +211,7 @@ bind_functions(struct Env *env, uint8_t *binary, size_t size, uintptr_t image_st
 
             uintptr_t fn = find_function(strtab + sym->st_name);
 
-            if (fn < 0) continue;
+            if (!fn) continue;
 
             if (sym->st_value >= image_start && sym->st_value <= image_end) {
                 uintptr_t *fn_ref = (uintptr_t *)sym->st_value;
