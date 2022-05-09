@@ -20,6 +20,7 @@
 static int
 sys_cputs(const char *s, size_t len) {
     // LAB 8: Your code here
+
     /* Check that the user has permission to read memory [s, s+len).
     * Destroy the environment if not. */
     user_mem_assert(curenv, s, len, PROT_R | PROT_USER_);
@@ -408,6 +409,14 @@ sys_env_set_trapframe(envid_t envid, struct Trapframe *tf) {
     return 0;
 }
 
+/* Return date and time in UNIX timestamp format: seconds passed
+ * from 1970-01-01 00:00:00 UTC. */
+static int
+sys_gettime(void) {
+    // LAB 12: Your code here
+    return 0;
+}
+
 /*
  * This function return the difference between maximal
  * number of references of regions [addr, addr + size] and [addr2,addr2+size2]
@@ -434,6 +443,7 @@ syscall(uintptr_t syscallno, uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t
     // LAB 8: Your code here
     // LAB 9: Your code here
     // LAB 11: Your code here
+    // LAB 12: Your code here
     if (syscallno == SYS_cputs) {
         return sys_cputs((const char *)a1, (size_t)a2);
     } else if (syscallno == SYS_cgetc) {
