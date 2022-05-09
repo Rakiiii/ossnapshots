@@ -65,17 +65,17 @@ _pgfault_upcall:
     # ways as registers become unavailable as scratch space.
 
     # LAB 9: Your code here
-    movq 0x98(%rsp), %rcx    
-    subq $8, %rcx            
-    movq %rcx, 0x98(%rsp)    
-    movq 0x88(%rsp), %rdx  
-    movq %rdx, (%rcx)    
+    movq 0x98(%rsp), %rcx
+    subq $8, %rcx
+    movq %rcx, 0x98(%rsp)
+    movq 0x88(%rsp), %rdx
+    movq %rdx, (%rcx)
 
     # Restore the trap-time registers.  After you do this, you
     # can no longer modify any general-purpose registers (POPA).
     # LAB 9: Your code here
     addq $16, %rsp
-    POPA 
+    POPA
 
     # Restore rflags from the stack.  After you do this, you can
     # no longer use arithmetic operations or anything else that
