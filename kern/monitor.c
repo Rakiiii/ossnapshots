@@ -52,6 +52,8 @@ static struct Command commands[] = {
         {"timer_stop", "Stop timer", mon_stop},
         {"timer_freq", "Timer frequance", mon_frequency},
         {"memory", "Free memory list", mon_memory},
+        {"pagetable", "Pagetable dump", mon_pagetable},
+        {"virtual_memory", "Virtual memory dump", mon_virt},
 };
 #define NCOMMANDS (sizeof(commands) / sizeof(commands[0]))
 
@@ -168,9 +170,6 @@ mon_frequency(int argc, char **argv, struct Trapframe *tf) {
     return 0;
 }
 
-/* Implement timer_start (mon_start), timer_stop (mon_stop), timer_freq (mon_frequency) commands. */
-// LAB 5: Your code here:
-
 /* Implement memory (mon_memory) command.
  * This command should call dump_memory_lists()
  */
@@ -181,17 +180,19 @@ int mon_memory(int argc, char **argv, struct Trapframe *tf) {
     return 0;
 }
 
-/* Implement timer_start (mon_start), timer_stop (mon_stop), timer_freq (mon_frequency) commands. */
-// LAB 5: Your code here:
-
-/* Implement memory (mon_memory) command.
- * This command should call dump_memory_lists()
- */
-// LAB 6: Your code here
-
 /* Implement mon_pagetable() and mon_virt()
  * (using dump_virtual_tree(), dump_page_table())*/
 // LAB 7: Your code here
+
+int mon_pagetable(int argc, char **argv, struct Trapframe *tf) {
+    dump_page_table(current_space->pml4);
+    return 0;
+}
+
+int mon_virt(int argc, char **argv, struct Trapframe *tf) {
+    dump_virtual_tree(current_space->root, current_space->root->class);
+    return 0;
+}
 
 /* Kernel monitor command interpreter */
 
