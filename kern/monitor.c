@@ -16,11 +16,14 @@
 #include <kern/env.h>
 #include <kern/pmap.h>
 #include <kern/trap.h>
+#include <kern/kclock.h>
 
 #define WHITESPACE "\t\r\n "
 #define MAXARGS    16
 
 /* Functions implementing monitor commands */
+
+int mon_word(int argc, char **argv, struct Trapframe *tf);
 int mon_help(int argc, char **argv, struct Trapframe *tf);
 int mon_kerninfo(int argc, char **argv, struct Trapframe *tf);
 int mon_backtrace(int argc, char **argv, struct Trapframe *tf);
@@ -44,6 +47,13 @@ static struct Command commands[] = {
         {"kerninfo", "Display information about the kernel", mon_kerninfo},
         {"backtrace", "Print stack backtrace", mon_backtrace},
         {"dumpcmos", "Print CMOS contents", mon_dumpcmos},
+        {"word", "Print some word", mon_word},
+        {"timer_start", "Start timer", mon_start},
+        {"timer_stop", "Stop timer", mon_stop},
+        {"timer_freq", "Timer frequance", mon_frequency},
+        {"memory", "Free memory list", mon_memory},
+        {"pagetable", "Pagetable dump", mon_pagetable},
+        {"virtual_memory", "Virtual memory dump", mon_virt},
 };
 #define NCOMMANDS (sizeof(commands) / sizeof(commands[0]))
 
@@ -74,6 +84,34 @@ int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf) {
     // LAB 2: Your code here
 
+    cprintf("Stack backtrace:\n");
+
+    struct Ripdebuginfo info;
+
+    uint64_t rbp = read_rbp();
+    uint64_t *rip = ((uint64_t *)rbp);
+
+    while (rip != 0) {
+
+        debuginfo_rip(rip[1], &info);
+
+        cprintf("  rbp %016lx rip %016lx\n", rbp, rip[1]);
+        uint64_t offset = rip[1] - info.rip_fn_addr;
+        cprintf("    %s:%d:  %s+%ld\n", info.rip_file, info.rip_line, info.rip_fn_name, offset);
+
+int mon_dumpcmos(int argc, char **argv, struct Trapframe *tf);
+        rbp = *((uint64_t *)rbp);
+        rip = ((uint64_t *)rbp);
+    }
+
+    return 0;
+}
+
+int
+mon_word(int argc, char **argv, struct Trapframe *tf) {
+
+    cprintf("Some_static_word\n");
+
     return 0;
 }
 
@@ -86,20 +124,75 @@ mon_dumpcmos(int argc, char **argv, struct Trapframe *tf) {
     // Hint: Use cmos_read8()/cmos_write8() functions.
     // LAB 4: Your code here
 
+    cprintf("00: ");
+
+    uint8_t read = 0;
+
+    while (read < CMOS_SIZE) {
+
+        if (read % 16 == 0 && read > 0) {
+            cprintf("\n%02X: ", read);
+        }
+
+        cprintf("%02X ", cmos_read8(read));
+
+        ++read;
+    }
+    cprintf("\n");
+
     return 0;
 }
 
 /* Implement timer_start (mon_start), timer_stop (mon_stop), timer_freq (mon_frequency) commands. */
 // LAB 5: Your code here:
 
+int
+mon_start(int argc, char **argv, struct Trapframe *tf) {
+    if (argc != 2) {
+        return 1;
+    }
+    timer_start(argv[1]);
+    return 0;
+}
+
+int
+mon_stop(int argc, char **argv, struct Trapframe *tf) {
+    timer_stop();
+    return 0;
+}
+
+int
+mon_frequency(int argc, char **argv, struct Trapframe *tf) {
+    if (argc != 2) {
+        return 1;
+    }
+    timer_cpu_frequency(argv[1]);
+    return 0;
+}
+
 /* Implement memory (mon_memory) command.
  * This command should call dump_memory_lists()
  */
 // LAB 6: Your code here
 
+int mon_memory(int argc, char **argv, struct Trapframe *tf) {
+    dump_memory_lists();
+    return 0;
+}
+
 /* Implement mon_pagetable() and mon_virt()
  * (using dump_virtual_tree(), dump_page_table())*/
 // LAB 7: Your code here
+
+int mon_pagetable(int argc, char **argv, struct Trapframe *tf) {
+    dump_page_table(current_space->pml4);
+    return 0;
+}
+
+int mon_virt(int argc, char **argv, struct Trapframe *tf) {
+    dump_virtual_tree(current_space->root, current_space->root->class);
+    return 0;
+}
 
 /* Kernel monitor command interpreter */
 
