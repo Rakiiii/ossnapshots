@@ -93,25 +93,22 @@ env_init(void) {
     /* Allocate envs array with kzalloc_region
      * (don't forget about rounding) */
     // LAB 8: Your code here
-
+    envs = (struct Env *)kzalloc_region(sizeof(*envs) * NENV);
+    memset(envs, 0, sizeof(*envs) * NENV);
     /* Map envs to UENVS read-only,
      * but user-accessible (with PROT_USER_ set) */
     // LAB 8: Your code here
-
+    map_region(current_space, UENVS, &kspace, (uintptr_t)envs, UENVS_SIZE, PROT_R | PROT_USER_);
     /* Set up envs array */
-
     // LAB 3: Your code here
-
-    struct Env *next = NULL;
-    for (int i = NENV - 1; i >= 0; i--) {
-        envs[i].env_id = 0;
-        envs[i].env_status = ENV_FREE;
-        envs[i].env_link = next;
-        next = &envs[i];
+    int i;
+    env_free_list = NULL;
+    for (i = 0; i < NENV; i++) {
+        envs[NENV - i - 1].env_status = ENV_FREE;
+        envs[NENV - i - 1].env_id = 0;
+        envs[NENV - i - 1].env_link = env_free_list;
+        env_free_list = &envs[NENV - i - 1];
     }
-
-    env_free_list = next;
-    assert(env_free_list == &envs[0]);
 }
 
 /* Allocates and initializes a new environment.
@@ -173,8 +170,8 @@ env_alloc(struct Env **newenv_store, envid_t parent_id, enum EnvType type) {
 
     // LAB 3: Your code here:
     static uintptr_t stack_top = 0x2000000;
-    if ((stack_top - (env - envs) * 2 * PROG_STACK_SIZE) == 0) panic("Space for stack ends");
-    env->env_tf.tf_rsp = stack_top - (env - envs) * 2 * PROG_STACK_SIZE;
+    env->env_tf.tf_rsp = stack_top - (env - envs) * 2 * PAGE_SIZE;
+
 #else
     env->env_tf.tf_ds = GD_UD | 3;
     env->env_tf.tf_es = GD_UD | 3;
@@ -202,41 +199,43 @@ env_alloc(struct Env **newenv_store, envid_t parent_id, enum EnvType type) {
 static int
 bind_functions(struct Env *env, uint8_t *binary, size_t size, uintptr_t image_start, uintptr_t image_end) {
     // LAB 3: Your code here:
-
-    /* NOTE: find_function from kdebug.c should be used */
-
-    struct Elf *ehdr = (struct Elf *)binary;
-
-    struct Secthdr *shdr = (struct Secthdr *)(binary + ehdr->e_shoff);
-    int shnum = ehdr->e_shnum;
-
-    for (int i = 0; i < shnum; ++i) {
-
-        if (shdr[i].sh_type != 2) continue;
-
-        const char *const strtab = (const char *const)binary + shdr[shdr[i].sh_link].sh_offset;
-        uint8_t *fn_names = binary + shdr[i].sh_offset;
-        uint8_t *fn_names_end = fn_names + shdr[i].sh_size;
-
-        for (; fn_names < fn_names_end; fn_names += shdr[i].sh_entsize) {
-
-            struct Elf64_Sym *sym = (struct Elf64_Sym *)fn_names;
-
-            if (ELF64_ST_BIND(sym->st_info) != 1) continue;
-            if (ELF64_ST_TYPE(sym->st_info) != STT_OBJECT) continue;
-
-            uintptr_t fn = find_function(strtab + sym->st_name);
-
-            if (!fn) continue;
-
-            if (sym->st_value >= image_start && sym->st_value <= image_end) {
-                uintptr_t *fn_ref = (uintptr_t *)sym->st_value;
-
-                *fn_ref = fn;
+    int i, strtab = -1;
+    struct Elf *elf    = (struct Elf *)binary;
+    struct Secthdr *sh = (struct Secthdr *)(binary + elf->e_shoff);
+    const char *sh_str  = (char *)binary + sh[elf->e_shstrndx].sh_offset;
+    for (i = 0; i < elf->e_shnum; i++) {
+        if (sh[i].sh_type == ELF_SHT_STRTAB) {
+            if (!strcmp(".strtab", sh_str + sh[i].sh_name)) {
+                strtab = i;
+                break;
             }
         }
     }
-
+    if (strtab < 0) {
+        panic("Can't find strtab!\n");
+        return 0;
+    }
+    const char *str = (char *)binary + sh[strtab].sh_offset;
+    for (int i = 0; i < elf->e_shnum; i++) {
+        if (sh[i].sh_type == ELF_SHT_SYMTAB) {
+            if (!strcmp(".symtab", sh_str + sh[i].sh_name)) {
+                struct Elf64_Sym *sym = (struct Elf64_Sym *)(binary + sh[i].sh_offset);
+                int num_sym = sh[i].sh_size / sizeof(sym[0]);
+                int j;
+                for (j = 0; j < num_sym; j++) {
+                    if (ELF64_ST_BIND(sym[j].st_info) == STB_GLOBAL && ELF64_ST_TYPE(sym[j].st_info) == STT_OBJECT && sym[j].st_size == sizeof(void *)) {
+                        const char *name = str + sym[j].st_name;
+                        uintptr_t addr = find_function(name);
+                        if (addr) {
+                            if (sym[j].st_value >= image_start && sym[j].st_value <= image_end) {
+                                memcpy((void *)sym[j].st_value, &addr, sizeof(void *));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     return 0;
 }
 
@@ -292,35 +291,28 @@ static int
 load_icode(struct Env *env, uint8_t *binary, size_t size) {
     // LAB 3: Your code here
     // LAB 8: Your code here
-
-    struct Elf *elf = (struct Elf *)binary;
-
-    if (elf->e_magic != ELF_MAGIC) {
-        return -E_INVALID_EXE;
-    }
-
-    if (!elf->e_phoff) {
-        return -E_INVALID_EXE;
-    }
-
-    struct Proghdr *phnum, *phoff;
-
-    phoff = (struct Proghdr *)((uint8_t *)elf + elf->e_phoff);
-    phnum = phoff + elf->e_phnum;
-
-    for (; phoff < phnum; phoff++) {
-
-        if (phoff->p_type != ELF_PROG_LOAD) {
-            continue;
+    struct Elf *elf = (struct Elf *) binary;
+    if (elf->e_magic == ELF_MAGIC) {
+        switch_address_space(&env->address_space);
+        struct Proghdr *ph = (struct Proghdr *)(binary + elf->e_phoff);
+        int i, phnum = (int) elf->e_phnum;
+        for (i = 0; i < phnum; i++) {
+            if (ph[i].p_type == ELF_PROG_LOAD) {
+                uintptr_t start_aligned = ROUNDDOWN((uintptr_t)ph[i].p_va, PAGE_SIZE);
+                uintptr_t end_aligned = ROUNDUP((uintptr_t)ph[i].p_va + ph[i].p_memsz, PAGE_SIZE);
+                map_region(&env->address_space, start_aligned, NULL, 0, end_aligned - start_aligned, PROT_RWX | PROT_USER_ | ALLOC_ZERO);
+                memcpy((void *)ph[i].p_va, binary + ph[i].p_offset, ph[i].p_filesz);
+                memset((void *)ph[i].p_va + ph[i].p_filesz, 0, ph[i].p_memsz - ph[i].p_filesz);
+            }
         }
-
-        memset((void *)phoff->p_va, 0, phoff->p_memsz);
-        memcpy((void *)phoff->p_va, (void *)(binary + phoff->p_offset), phoff->p_filesz);
+        map_region(&env->address_space, USER_STACK_TOP - USER_STACK_SIZE, NULL, 0, USER_STACK_SIZE, PROT_R | PROT_W | PROT_USER_ | ALLOC_ZERO);
+        switch_address_space(&kspace);
+        env->env_tf.tf_rip = elf->e_entry;
+        bind_functions(env, binary, size, elf->e_entry, elf->e_entry + size);
+    } else {
+        return -E_INVALID_EXE;
     }
-
-    env->env_tf.tf_rip = elf->e_entry;
-
-    return bind_functions(env, binary, size, elf->e_entry, elf->e_entry + size);
+    return 0;
 }
 
 /* Allocates a new env with env_alloc, loads the named elf
@@ -333,21 +325,12 @@ void
 env_create(uint8_t *binary, size_t size, enum EnvType type) {
     // LAB 8: Your code here
     // LAB 3: Your code here
-
-    struct Env *env;
-
-    int status;
-
-    status = env_alloc(&env, 0, type);
-
-    if (status < 0) {
-        panic("env_create: env_alloc status incorrect");
+    struct Env *new;
+    if (env_alloc(&new, 0, type) < 0) {
+        panic("Can't allocate new environment\n");
     }
-
-    env->env_type = type;
-    env->env_parent_id = 0;
-
-    load_icode(env, binary, size);
+    new->binary = binary;
+    load_icode(new, binary, size);
 }
 
 
@@ -387,17 +370,13 @@ env_destroy(struct Env *env) {
      * it traps to the kernel. */
 
     // LAB 3: Your code here
-    // LAB 8: Your code here (set in_page_fault = 0)
-    if (env->env_status == ENV_RUNNING && curenv != env) {
-        env->env_status = ENV_DYING;
-        return;
-    }
-
+    env->env_status = ENV_DYING;
     env_free(env);
-
     if (curenv == env) {
         sched_yield();
     }
+    // LAB 8: Your code here (set in_page_fault = 0)
+    in_page_fault = 0;
 }
 
 #ifdef CONFIG_KSPACE
@@ -423,27 +402,27 @@ csys_yield(struct Trapframe *tf) {
 _Noreturn void
 env_pop_tf(struct Trapframe *tf) {
     asm volatile(
-            "movq %0, %%rsp\n"
-            "movq 0(%%rsp), %%r15\n"
-            "movq 8(%%rsp), %%r14\n"
-            "movq 16(%%rsp), %%r13\n"
-            "movq 24(%%rsp), %%r12\n"
-            "movq 32(%%rsp), %%r11\n"
-            "movq 40(%%rsp), %%r10\n"
-            "movq 48(%%rsp), %%r9\n"
-            "movq 56(%%rsp), %%r8\n"
-            "movq 64(%%rsp), %%rsi\n"
-            "movq 72(%%rsp), %%rdi\n"
-            "movq 80(%%rsp), %%rbp\n"
-            "movq 88(%%rsp), %%rdx\n"
-            "movq 96(%%rsp), %%rcx\n"
-            "movq 104(%%rsp), %%rbx\n"
-            "movq 112(%%rsp), %%rax\n"
-            "movw 120(%%rsp), %%es\n"
-            "movw 128(%%rsp), %%ds\n"
-            "addq $152,%%rsp\n" /* skip tf_trapno and tf_errcode */
-            "iretq" ::"g"(tf)
-            : "memory");
+    "movq %0, %%rsp\n"
+    "movq 0(%%rsp), %%r15\n"
+    "movq 8(%%rsp), %%r14\n"
+    "movq 16(%%rsp), %%r13\n"
+    "movq 24(%%rsp), %%r12\n"
+    "movq 32(%%rsp), %%r11\n"
+    "movq 40(%%rsp), %%r10\n"
+    "movq 48(%%rsp), %%r9\n"
+    "movq 56(%%rsp), %%r8\n"
+    "movq 64(%%rsp), %%rsi\n"
+    "movq 72(%%rsp), %%rdi\n"
+    "movq 80(%%rsp), %%rbp\n"
+    "movq 88(%%rsp), %%rdx\n"
+    "movq 96(%%rsp), %%rcx\n"
+    "movq 104(%%rsp), %%rbx\n"
+    "movq 112(%%rsp), %%rax\n"
+    "movw 120(%%rsp), %%es\n"
+    "movw 128(%%rsp), %%ds\n"
+    "addq $152,%%rsp\n" /* skip tf_trapno and tf_errcode */
+    "iretq" ::"g"(tf)
+    : "memory");
 
     /* Mostly to placate the compiler */
     panic("Reached unrecheble\n");
@@ -483,14 +462,16 @@ env_run(struct Env *env) {
 
     // LAB 3: Your code here
     // LAB 8: Your code here
-
-    if (curenv && curenv->env_status == ENV_RUNNING) {
-        curenv->env_status = ENV_RUNNABLE;
+    if (curenv) {
+        if (curenv->env_status == ENV_RUNNING) {
+            curenv->env_status = ENV_RUNNABLE;
+        }
     }
-
     curenv = env;
-    env->env_status = ENV_RUNNING;
-    env->env_runs++;
+    curenv->env_status = ENV_RUNNING;
+    curenv->env_runs++;
+    switch_address_space(&curenv->address_space);
+    env_pop_tf(&curenv->env_tf);
 
-    env_pop_tf(&(env->env_tf));
+    while(1) {}
 }

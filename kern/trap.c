@@ -105,7 +105,44 @@ trap_init(void) {
 
     /* Insert trap handlers into IDT */
     // LAB 8: Your code here
-
+    extern void (*thdlr0)(void);
+    idt[T_DIVIDE] = GATE(0, GD_KT, (uint64_t)&thdlr0, 0);
+    extern void (*thdlr1)(void);
+    idt[T_DEBUG] = GATE(0, GD_KT, (uint64_t)&thdlr1, 0);
+    extern void (*thdlr2)(void);
+    idt[T_NMI] = GATE(0, GD_KT, (uint64_t)&thdlr2, 0);
+    extern void (*thdlr3)(void);
+    idt[T_BRKPT] = GATE(0, GD_KT, (uint64_t)&thdlr3, 3);
+    extern void (*thdlr4)(void);
+    idt[T_OFLOW] = GATE(0, GD_KT, (uint64_t)&thdlr4, 0);
+    extern void (*thdlr5)(void);
+    idt[T_BOUND] = GATE(0, GD_KT, (uint64_t)&thdlr5, 0);
+    extern void (*thdlr6)(void);
+    idt[T_ILLOP] = GATE(0, GD_KT, (uint64_t)&thdlr6, 0);
+    extern void (*thdlr7)(void);
+    idt[T_DEVICE] = GATE(0, GD_KT, (uint64_t)&thdlr7, 0);
+    extern void (*thdlr8)(void);
+    idt[T_DBLFLT] = GATE(0, GD_KT, (uint64_t)&thdlr8, 0);
+    extern void (*thdlr10)(void);
+    idt[T_TSS] = GATE(0, GD_KT, (uint64_t)&thdlr10, 0);
+    extern void (*thdlr11)(void);
+    idt[T_SEGNP] = GATE(0, GD_KT, (uint64_t)&thdlr11, 0);
+    extern void (*thdlr12)(void);
+    idt[T_STACK] = GATE(0, GD_KT, (uint64_t)&thdlr12, 0);
+    extern void (*thdlr13)(void);
+    idt[T_GPFLT] = GATE(0, GD_KT, (uint64_t)&thdlr13, 0);
+    extern void (*thdlr14)(void);
+    idt[T_PGFLT] = GATE(0, GD_KT, (uint64_t)&thdlr14, 0);
+    extern void (*thdlr16)(void);
+    idt[T_FPERR] = GATE(0, GD_KT, (uint64_t)&thdlr16, 0);
+    extern void (*thdlr17)(void);
+    idt[T_ALIGN] = GATE(0, GD_KT, (uint64_t)&thdlr17, 0);
+    extern void (*thdlr18)(void);
+    idt[T_MCHK] = GATE(0, GD_KT, (uint64_t)&thdlr18, 0);
+    extern void (*thdlr19)(void);
+    idt[T_SIMDERR] = GATE(0, GD_KT, (uint64_t)&thdlr19, 0);
+    extern void (*thdlr48)(void);
+    idt[T_SYSCALL] = GATE(0, GD_KT, (uint64_t)&thdlr48, 3);
     /* Setup #PF handler dedicated stack
      * It should be switched on #PF because
      * #PF is the only kind of exception that
@@ -130,20 +167,20 @@ trap_init_percpu(void) {
      * For good measure, clear the local descriptor table (LDT),
      * since we don't use it */
     asm volatile(
-            "movw %%dx,%%gs\n\t"
-            "movw %%dx,%%fs\n\t"
-            "movw %%ax,%%es\n\t"
-            "movw %%ax,%%ds\n\t"
-            "movw %%ax,%%ss\n\t"
-            "xorl %%eax,%%eax\n\t"
-            "lldt %%ax\n\t"
-            "pushq %%rcx\n\t"
-            "movabs $1f,%%rax\n\t"
-            "pushq %%rax\n\t"
-            "lretq\n"
-            "1:\n" ::"a"(GD_KD),
-            "d"(GD_UD | 3), "c"(GD_KT)
-            : "cc", "memory");
+    "movw %%dx,%%gs\n\t"
+    "movw %%dx,%%fs\n\t"
+    "movw %%ax,%%es\n\t"
+    "movw %%ax,%%ds\n\t"
+    "movw %%ax,%%ss\n\t"
+    "xorl %%eax,%%eax\n\t"
+    "lldt %%ax\n\t"
+    "pushq %%rcx\n\t"
+    "movabs $1f,%%rax\n\t"
+    "pushq %%rax\n\t"
+    "lretq\n"
+    "1:\n" ::"a"(GD_KD),
+    "d"(GD_UD | 3), "c"(GD_KT)
+    : "cc", "memory");
 
     /* Setup a TSS so that we get the right stack
      * when we trap to the kernel. */
@@ -184,7 +221,7 @@ print_trapframe(struct Trapframe *tf) {
         cprintf(" [%s, %s, %s]\n",
                 tf->tf_err & FEC_U ? "user" : "kernel",
                 tf->tf_err & FEC_W ? "write" : tf->tf_err & FEC_I ? "execute" :
-                                                                    "read",
+                                               "read",
                 tf->tf_err & FEC_P ? "protection" : "not-present");
     } else
         cprintf("\n");
@@ -218,40 +255,43 @@ print_regs(struct PushRegs *regs) {
 static void
 trap_dispatch(struct Trapframe *tf) {
     switch (tf->tf_trapno) {
-    case T_SYSCALL:
-        tf->tf_regs.reg_rax = syscall(
-                tf->tf_regs.reg_rax,
-                tf->tf_regs.reg_rdx,
-                tf->tf_regs.reg_rcx,
-                tf->tf_regs.reg_rbx,
-                tf->tf_regs.reg_rdi,
-                tf->tf_regs.reg_rsi,
-                tf->tf_regs.reg_r8);
-        return;
-    case T_BRKPT:
-        // LAB 8: Your code here
-        return;
-    case IRQ_OFFSET + IRQ_SPURIOUS:
-        /* Handle spurious interrupts
-         * The hardware sometimes raises these because of noise on the
-         * IRQ line or other reasons, we don't care */
-        if (trace_traps) {
-            cprintf("Spurious interrupt on irq 7\n");
+        case T_SYSCALL:
+            tf->tf_regs.reg_rax = syscall(
+                    tf->tf_regs.reg_rax,
+                    tf->tf_regs.reg_rdx,
+                    tf->tf_regs.reg_rcx,
+                    tf->tf_regs.reg_rbx,
+                    tf->tf_regs.reg_rdi,
+                    tf->tf_regs.reg_rsi,
+                    tf->tf_regs.reg_r8);
+            return;
+        case T_BRKPT:
+            // LAB 8: Your code here
+            monitor(tf);
+            return;
+        case IRQ_OFFSET + IRQ_SPURIOUS:
+            /* Handle spurious interrupts
+             * The hardware sometimes raises these because of noise on the
+             * IRQ line or other reasons, we don't care */
+            if (trace_traps) {
+                cprintf("Spurious interrupt on irq 7\n");
+                print_trapframe(tf);
+            }
+            return;
+        case IRQ_OFFSET + IRQ_TIMER:
+        case IRQ_OFFSET + IRQ_CLOCK:
+            // LAB 5: Your code here
+            // LAB 4: Your code here
+            timer_for_schedule->handle_interrupts();
+            rtc_check_status();
+            pic_send_eoi(IRQ_CLOCK);
+            sched_yield();
+            return;
+        default:
             print_trapframe(tf);
-        }
-        return;
-    case IRQ_OFFSET + IRQ_TIMER:
-    case IRQ_OFFSET + IRQ_CLOCK:
-        // LAB 5: Your code here
-        // LAB 4: Your code here
-        timer_for_schedule->handle_interrupts();
-        sched_yield();
-        return;
-    default:
-        print_trapframe(tf);
-        if (!(tf->tf_cs & 3))
-            panic("Unhandled trap in kernel");
-        env_destroy(curenv);
+            if (!(tf->tf_cs & 3))
+                panic("Unhandled trap in kernel");
+            env_destroy(curenv);
     }
 }
 
@@ -263,7 +303,7 @@ trap(struct Trapframe *tf) {
     /* The environment may have set DF and some versions
      * of GCC rely on DF being clear */
     asm volatile("cld" ::
-                         : "cc");
+    : "cc");
 
     /* Halt the CPU if some other CPU has called panic() */
     extern char *panicstr;
