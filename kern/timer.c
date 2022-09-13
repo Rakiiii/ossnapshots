@@ -89,6 +89,91 @@ acpi_find_table(const char *sign) {
      */
 
     // LAB 5: Your code here
+    static RSDT *rsdt;
+    static size_t len;
+    static size_t enter_size;
+
+    size_t index;
+    uint8_t checksum = 0;
+
+
+    uint64_t rsdt_adress;
+    uint64_t fadt_adress;
+
+    if (!rsdt) {
+        RSDP *rsdp = mmio_map_region(uefi_lp->ACPIRoot, sizeof(RSDP));
+        if (!rsdp->Revision) {
+
+            for (index = 0; index < offsetof(RSDP, Length); index++) {
+                checksum += ((uint8_t *)rsdp)[index];
+            }
+
+            if (checksum) {
+                panic("Invalid RSDP");
+            }
+
+            rsdt_adress = rsdp->RsdtAddress;
+            enter_size = 4;
+        } else {
+
+            for (index = 0; index < rsdp->Length; index++) {
+                checksum += ((uint8_t *)rsdp)[index];
+            }
+
+            if (checksum) {
+                panic("Invalid RSDP");
+            }
+
+            rsdt_adress = rsdp->XsdtAddress;
+            enter_size = 8;
+        }
+        rsdt = mmio_map_region(rsdt_adress, sizeof(RSDT));
+        rsdt = mmio_remap_last_region(rsdt_adress, rsdt, sizeof(RSDT), rsdt->h.Length);
+
+        for (index = 0; index < rsdt->h.Length; index++) {
+            checksum += ((uint8_t *)rsdt)[index];
+        }
+
+        if (checksum) {
+            panic("Invalid RSDP\n");
+        }
+
+        if (!rsdp->Revision) {
+
+            if (strncmp(rsdt->h.Signature, "RSDT", 4)) {
+                panic("Invalid RSDT\n");
+            }
+            len = (rsdt->h.Length - sizeof(RSDT)) / 4;
+        } else {
+
+            if (strncmp(rsdt->h.Signature, "XSDT", 4)) {
+                panic("Invalid RSDT\n");
+            }
+            len = (rsdt->h.Length - sizeof(RSDT)) / 8;
+        }
+    }
+
+    ACPISDTHeader *header = NULL;
+
+    for (index = 0; index < len; index++) {
+
+        memcpy(&fadt_adress, (uint8_t *)rsdt->PointerToOtherSDT + index * enter_size, enter_size);
+
+        header = mmio_map_region(fadt_adress, sizeof(ACPISDTHeader));
+        header = mmio_remap_last_region(fadt_adress, header, sizeof(ACPISDTHeader), rsdt->h.Length);
+
+        for (size_t i = 0; i < header->Length; i++) {
+            checksum += ((uint8_t *)header)[i];
+        }
+
+        if (checksum) {
+            panic("Invalid ACPI table '%.4s'", header->Signature);
+        }
+
+        if (!strncmp(header->Signature, sign, 4)) {
+            return header;
+        }
+    }
 
     return NULL;
 }
@@ -103,6 +188,8 @@ get_fadt(void) {
 
     static FADT *kfadt;
 
+    kfadt = acpi_find_table("FACP");
+
     return kfadt;
 }
 
@@ -113,6 +200,8 @@ get_hpet(void) {
     // (use acpi_find_table)
 
     static HPET *khpet;
+
+    khpet = acpi_find_table("HPET");
 
     return khpet;
 }
@@ -214,12 +303,30 @@ hpet_get_main_cnt(void) {
 void
 hpet_enable_interrupts_tim0(void) {
     // LAB 5: Your code here
+    hpetReg->GEN_CONF |= HPET_LEG_RT_CNF;
 
+    hpetReg->TIM0_CONF = (IRQ_TIMER << 9);
+    hpetReg->TIM0_CONF |= HPET_TN_TYPE_CNF | HPET_TN_INT_ENB_CNF | HPET_TN_VAL_SET_CNF;
+
+    // // Peta / hpetFemto / 2 == 0.5 sec
+    hpetReg->TIM0_COMP = hpet_get_main_cnt() + Peta / hpetFemto / 2;
+    hpetReg->TIM0_COMP = Peta / hpetFemto / 2;
+
+    pic_irq_unmask(IRQ_TIMER);
 }
 
 void
 hpet_enable_interrupts_tim1(void) {
     // LAB 5: Your code here
+    hpetReg->GEN_CONF |= HPET_LEG_RT_CNF;
+
+    hpetReg->TIM0_CONF = (IRQ_CLOCK << 9);
+    hpetReg->TIM0_CONF |= HPET_TN_TYPE_CNF | HPET_TN_INT_ENB_CNF | HPET_TN_VAL_SET_CNF;
+
+    hpetReg->TIM1_COMP = hpet_get_main_cnt() + Peta / hpetFemto / 2 * 3;
+    hpetReg->TIM1_COMP = Peta / hpetFemto / 2 * 3;
+
+    pic_irq_unmask(IRQ_CLOCK);
 }
 
 void
@@ -241,6 +348,21 @@ hpet_cpu_frequency(void) {
 
     // LAB 5: Your code here
 
+    uint64_t start = hpet_get_main_cnt();
+    uint64_t start_tsc = read_tsc();
+    uint64_t offset = start;
+    uint64_t diff = hpetFreq / 10;
+
+    while (offset - start < diff) {
+        asm volatile("pause");
+        offset = hpet_get_main_cnt();
+    }
+
+    uint64_t offset_tsc = read_tsc();
+
+    cpu_freq = (offset_tsc - start_tsc) * 10;
+
+
     return cpu_freq;
 }
 
@@ -258,6 +380,27 @@ pmtimer_cpu_frequency(void) {
     static uint64_t cpu_freq;
 
     // LAB 5: Your code here
+
+    uint32_t start = pmtimer_get_timeval();
+    uint64_t start_tsc = read_tsc();
+    uint32_t offset = start;
+    uint64_t diff = 0;
+    uint64_t eps = PM_FREQ / 10;
+    //cprintf("before while\n");
+    while (diff < eps) {
+        offset = pmtimer_get_timeval();
+        if (start - offset <= 0xFFFFFF) {
+            diff = offset - start + 0xFFFFFF;
+        } else if (start - offset > 0) {
+            diff = offset - start + 0xFFFFFFFF;
+        } else {
+            diff = offset- start;
+        }
+    }
+    //cprintf("after while\n");
+    uint64_t offset_tsc = read_tsc();
+    //cprintf("after read\n");
+    cpu_freq = (offset_tsc - start_tsc) * 10;
 
     return cpu_freq;
 }

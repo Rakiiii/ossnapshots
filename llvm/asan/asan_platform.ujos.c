@@ -45,8 +45,8 @@ extern uint8_t __text_start;
 extern uint8_t __text_end;
 
 void
-        NORETURN
-        _panic(const char *file, int line, const char *fmt, ...);
+NORETURN
+_panic(const char *file, int line, const char *fmt, ...);
 
 void
 platform_abort() {
@@ -65,6 +65,14 @@ platform_abort() {
 static bool
 asan_shadow_allocator(struct UTrapframe *utf) {
     // LAB 9: Your code here
+    if (SHADOW_FOR_ADDRESS(utf->utf_fault_va) >= asan_internal_shadow_start && 
+        SHADOW_FOR_ADDRESS(utf->utf_fault_va) <= asan_internal_shadow_end && !(utf->utf_fault_va >= asan_internal_shadow_start && 
+        utf->utf_fault_va <= asan_internal_shadow_end)) {
+            if (sys_alloc_region(sys_getenvid(), SHADOW_FOR_ADDRESS(utf->utf_fault_va), PAGE_SIZE, ALLOC_ONE | PROT_RW) < 0) {
+                return 0;
+            }
+            return 1;
+        }
     return 0;
 }
 #endif
@@ -82,6 +90,7 @@ static int
 asan_unpoison_shared_region(void *start, void *end, void *arg) {
     (void)start, (void)end, (void)arg;
     // LAB 8: Your code here
+    platform_asan_poison(start, end - start);
     return 0;
 }
 
@@ -101,12 +110,18 @@ platform_asan_init() {
 
     /* 1. Program segments (text, data, rodata, bss) */
     // LAB 8: Your code here
+    platform_asan_unpoison(&__text_start, &__text_end - &__text_start);
+    platform_asan_unpoison(&__data_start, &__data_end - &__data_start);
+    platform_asan_unpoison(&__rodata_start, &__rodata_end - &__rodata_start);
+    platform_asan_unpoison(&__bss_start, &__bss_end - &__bss_start);
 
     /* 2. Stacks (USER_EXCEPTION_STACK_TOP, USER_STACK_TOP) */
     // LAB 8: Your code here
-
+    platform_asan_unpoison((void *)(USER_EXCEPTION_STACK_TOP - USER_EXCEPTION_STACK_SIZE), USER_EXCEPTION_STACK_SIZE);
+    platform_asan_unpoison((void *)(USER_STACK_TOP - USER_STACK_SIZE), USER_STACK_SIZE);
     /* 3. Kernel exposed info (UENVS, UVSYS (only for lab 12)) */
     // LAB 8: Your code here
+    platform_asan_unpoison((void *)UENVS, UENVS_SIZE);
 
 #if LAB >= 12
     platform_asan_unpoison((uptr)UVSYS, NVSYSCALLS * sizeof(int));
@@ -115,6 +130,7 @@ platform_asan_init() {
     /* 4. Shared pages
      * HINT: Use foreach_shared_region() with asan_unpoison_shared_region() */
     // LAB 8: Your code here
+    foreach_shared_region(asan_unpoison_shared_region, NULL);
 }
 
 

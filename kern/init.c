@@ -131,7 +131,7 @@ i386_init(void) {
     early_boot_pml4_init();
 
     /* Initialize the console.
-    * Can't call cprintf until after we do this! */
+     * Can't call cprintf until after we do this! */
     cons_init();
 
     tsc_calibrate();
@@ -176,7 +176,7 @@ i386_init(void) {
     ENV_CREATE(TEST, ENV_TYPE_USER);
 #else
     /* Touch all you want. */
-    ENV_CREATE(user_icode, ENV_TYPE_USER);
+    ENV_CREATE(user_testfile, ENV_TYPE_USER);
 #endif /* TEST* */
 #endif
 
