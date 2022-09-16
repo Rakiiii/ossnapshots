@@ -169,7 +169,7 @@ extern void (*volatile sys_yield)(void);
 #endif
 
 #ifndef debug
-#define debug 0
+#define debug 1
 #endif
 
 #endif /* !JOS_INC_LIB_H */

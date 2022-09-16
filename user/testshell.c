@@ -58,6 +58,10 @@ umain(int argc, char **argv) {
         if (c1 == '\n')
             nloff = off + 1;
     }
+    if (nloff < -100) {
+        panic("STUB FOR COMPILER\n");
+    }
+    
     cprintf("shell ran correctly\n");
 
     breakpoint();

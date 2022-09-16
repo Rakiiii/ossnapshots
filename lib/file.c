@@ -113,16 +113,31 @@ devfile_read(struct Fd *fd, void *buf, size_t n) {
    * system server. */
 
     // LAB 10: Your code here:
-    int r;
-    fsipcbuf.read.req_fileid = fd->fd_file.id;
-    fsipcbuf.read.req_n      = n;
-    if ((r = fsipc(FSREQ_READ, NULL)) < 0) {
-        return r;
+    if (!fd || !buf) {
+        return E_INVAL;
     }
-    assert(r <= n);
-    assert(r <= PAGE_SIZE);
-    memmove(buf, &fsipcbuf, r);
-    return r;
+
+    size_t totalRead = 0;
+    while (n) {
+        size_t minSize = MIN(n, sizeof(fsipcbuf.readRet.ret_buf));
+        fsipcbuf.read.req_fileid = fd->fd_file.id;
+        fsipcbuf.read.req_n      = minSize;
+
+        int read = fsipc(FSREQ_READ, NULL);
+        if (read <= 0) {
+            return read ? read : totalRead;
+        }
+
+        //cprintf("read %d expected read %zu max read %lu read buffer size %zu return buffer size %zu\n",read,minSize,n,sizeof(fsipcbuf.readRet.ret_buf),sizeof(buf));
+        
+        memmove(buf, fsipcbuf.readRet.ret_buf, read);
+
+        buf += read;
+        n -= read;
+        totalRead += read;
+  }
+
+  return totalRead;
 }
 
 /* Write at most 'n' bytes from 'buf' to 'fd' at the current seek position.
@@ -137,10 +152,30 @@ devfile_write(struct Fd *fd, const void *buf, size_t n) {
    * remember that write is always allowed to write *fewer*
    * bytes than requested. */
     // LAB 10: Your code here:
-    fsipcbuf.write.req_n = MIN(n, sizeof(fsipcbuf.write.req_buf));
-    fsipcbuf.write.req_fileid = fd->fd_file.id;
-    memmove(fsipcbuf.write.req_buf, buf, fsipcbuf.write.req_n);
-    return fsipc(FSREQ_WRITE, NULL);
+    if (!fd || !buf) {
+        return -E_INVAL;
+    }
+
+    int totalWrite = 0;
+    while (n) {
+        size_t minSize = MIN(n, sizeof(fsipcbuf.write.req_buf));
+
+        memmove(fsipcbuf.write.req_buf, buf, minSize);
+
+        fsipcbuf.write.req_fileid = fd->fd_file.id;
+        fsipcbuf.write.req_n = minSize;
+
+        int write = fsipc(FSREQ_WRITE, NULL);
+        if (write < 0) {
+            return write;
+        }
+
+        buf += write;
+        n -= write;
+        totalWrite += write;
+    }
+
+    return totalWrite;
 }
 
 /* Get file information */

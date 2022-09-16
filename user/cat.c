@@ -9,7 +9,7 @@ cat(int f, char *s) {
 
     while ((n = read(f, buf, (long)sizeof(buf))) > 0)
         if ((r = write(1, buf, n)) != n)
-            panic("write error copying %s: %i", s, r);
+            panic("write error copying %s: %i n is %li", s, r, n);
     if (n < 0)
         panic("error reading %s: %i", s, (int)n);
 }

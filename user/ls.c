@@ -61,6 +61,7 @@ usage(void) {
 
 void
 umain(int argc, char **argv) {
+    cprintf("ls start\n");
     int i;
     struct Argstate args;
 

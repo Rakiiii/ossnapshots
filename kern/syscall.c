@@ -20,7 +20,6 @@
 static int
 sys_cputs(const char *s, size_t len) {
     // LAB 8: Your code here
-
     /* Check that the user has permission to read memory [s, s+len).
     * Destroy the environment if not. */
     user_mem_assert(curenv, s, len, PROT_R | PROT_USER_);
@@ -53,7 +52,7 @@ static int
 sys_env_destroy(envid_t envid) {
     // LAB 8: Your code here.
     struct Env *env;
-    if (envid2env(envid, &env, 1) < 0) {
+    if (envid2env(envid, &env, true) < 0) {
         return -E_BAD_ENV;
     }
 
@@ -114,14 +113,14 @@ sys_env_set_status(envid_t envid, int status) {
 
     // LAB 9: Your code here
     struct Env* env;
-	if (envid2env(envid, &env, true) < 0) {
-		return -E_BAD_ENV;
-	}
+    if (envid2env(envid, &env, true) < 0) {
+        return -1;
+    }
     if (status == ENV_NOT_RUNNABLE || status == ENV_RUNNABLE) {
-		env->env_status = status;
-	} else {
-		return -E_INVAL;
-	}
+        env->env_status = status;
+    } else {
+        return -E_INVAL;
+    }
     return 0;
 }
 
@@ -138,8 +137,8 @@ sys_env_set_pgfault_upcall(envid_t envid, void *func) {
     // LAB 9: Your code here:
     struct Env* env;
     if (envid2env(envid, &env, true) < 0) {
-		return -1;
-	}
+        return -1;
+    }
     env->env_pgfault_upcall = func;
     return 0;
 }
@@ -169,20 +168,19 @@ sys_env_set_pgfault_upcall(envid_t envid, void *func) {
  *      or to allocate any necessary page tables. */
 static int
 sys_alloc_region(envid_t envid, uintptr_t addr, size_t size, int perm) {
-    // LAB 9: Your code here:
     struct Env* env;
     if (envid2env(envid, &env, true) < 0) {
-		return -E_BAD_ENV;
-	}
+        return -1;
+    }
     if (CLASS_MASK(0) & addr) {
-		return -E_INVAL;
-	}
+        return -E_INVAL;
+    }
     if (addr > MAX_USER_ADDRESS) {
-		return -E_INVAL;
-	}
+        return -E_INVAL;
+    }
     if (perm & ~PROT_ALL) {
-		return -E_INVAL;
-	}
+        return -E_INVAL;
+    }
     if (perm & ALLOC_ONE) {
         perm &= ~ALLOC_ZERO;
     } else {
@@ -191,9 +189,9 @@ sys_alloc_region(envid_t envid, uintptr_t addr, size_t size, int perm) {
     }
     perm |= PROT_USER_;
     perm |= PROT_LAZY;
-	if (map_region(&env->address_space, addr, NULL, 0, size, perm) < 0) {
-		return -E_NO_MEM;
-	}
+    if (map_region(&env->address_space, addr, NULL, 0, size, perm) < 0) {
+        return -1;
+    }
     return 0;
 }
 
@@ -224,27 +222,27 @@ sys_map_region(envid_t srcenvid, uintptr_t srcva,
     struct Env* srcenv;
     struct Env* dstenv;
     if (envid2env(srcenvid, &srcenv, true) < 0) {
-		return -E_BAD_ENV;
-	}
+        return -1;
+    }
     if (envid2env(dstenvid, &dstenv, true) < 0) {
-		return -E_BAD_ENV;
-	}
+        return -1;
+    }
     if (CLASS_MASK(0) & srcva || CLASS_MASK(0) & dstva) {
-		return -E_INVAL;
-	}
+        return -E_INVAL;
+    }
     if (srcva >= MAX_USER_ADDRESS) {
-		return -E_INVAL;
-	}
+        return -E_INVAL;
+    }
     if (dstva >= MAX_USER_ADDRESS) {
-		return -E_INVAL;
-	}
+        return -E_INVAL;
+    }
     perm |= PROT_USER_;
     if (perm & ~PROT_ALL || perm & ALLOC_ZERO || perm & ALLOC_ONE) {
-		return -E_INVAL;
-	}
-	if (map_region(&dstenv->address_space, dstva, &srcenv->address_space, srcva, size, perm) < 0) {
-		return -E_NO_MEM;
-	}
+        return -E_INVAL;
+    }
+    if (map_region(&dstenv->address_space, dstva, &srcenv->address_space, srcva, size, perm) < 0) {
+        return -1;
+    }
     return 0;
 }
 
@@ -262,14 +260,14 @@ sys_unmap_region(envid_t envid, uintptr_t va, size_t size) {
     // LAB 9: Your code here
     struct Env* env;
     if (envid2env(envid, &env, true) < 0) {
-		return -E_BAD_ENV;
-	}
+        return -1;
+    }
     if (CLASS_MASK(0) & va) {
-		return -E_INVAL;
-	}
+        return -E_INVAL;
+    }
     if (va >= MAX_USER_ADDRESS) {
-		return -E_INVAL;
-	}
+        return -E_INVAL;
+    }
     unmap_region(&env->address_space, va, size);
     return 0;
 }
@@ -383,6 +381,34 @@ sys_ipc_recv(uintptr_t dstva, uintptr_t maxsize) {
 }
 
 /*
+ * This function sets trapframe and is unsafe
+ * so you need:
+ *   -Check environment id to be valid and accessible
+ *   -Check argument to be valid memory
+ *   -Use nosan_memcpy to copy from usespace
+ *   -Prevent privilege escalation by overriding segments
+ *   -Only allow program to set safe flags in RFLAGS register
+ *   -Force IF to be set in RFLAGS
+ */
+static int
+sys_env_set_trapframe(envid_t envid, struct Trapframe *tf) {
+    // LAB 11: Your code here
+    struct Env* env = NULL;
+    if (envid2env(envid, &env, false) < 0) {
+        return -E_BAD_ENV;
+    }
+    user_mem_assert(env, tf, sizeof(struct Trapframe), PROT_USER_ | PROT_R);
+    nosan_memcpy((void*)&env->env_tf, (void*)tf, sizeof(struct Trapframe));
+    env->env_tf.tf_cs = GD_UT | 3;
+    env->env_tf.tf_ds = GD_UD | 3;
+    env->env_tf.tf_es = GD_UD | 3;
+    env->env_tf.tf_ss = GD_UD | 3;
+    env->env_tf.tf_rflags &= 0xFFF;
+    env->env_tf.tf_rflags |= FL_IF;
+    return 0;
+}
+
+/*
  * This function return the difference between maximal
  * number of references of regions [addr, addr + size] and [addr2,addr2+size2]
  * if addr2 is less than MAX_USER_ADDRESS, or just
@@ -393,11 +419,10 @@ sys_ipc_recv(uintptr_t dstva, uintptr_t maxsize) {
 static int
 sys_region_refs(uintptr_t addr, size_t size, uintptr_t addr2, uintptr_t size2) {
     // LAB 10: Your code here
-    if (addr2 < MAX_USER_ADDRESS) {
-        return region_maxref(current_space, addr, size) - region_maxref(current_space, addr2, size2);
+    if (addr2 >= MAX_USER_ADDRESS) {
+        return region_maxref(current_space, addr, size);
     }
-
-    return region_maxref(current_space, addr, size);
+    return region_maxref(current_space, addr, size) - region_maxref(current_space, addr2, size2);
 }
 
 /* Dispatches to the correct kernel function, passing the arguments. */
@@ -438,6 +463,8 @@ syscall(uintptr_t syscallno, uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t
         return sys_ipc_try_send((envid_t)a1, (uint32_t)a2, a3,(size_t)a4,(int)a5);
     } else if (syscallno == SYS_ipc_recv) {
         return sys_ipc_recv(a1, a2);
+    } else if (syscallno == SYS_env_set_trapframe) {
+        return sys_env_set_trapframe((envid_t)a1, (struct Trapframe *)a2);
     }
     return -E_NO_SYS;
 }
