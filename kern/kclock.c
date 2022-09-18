@@ -6,6 +6,8 @@
 #include <kern/trap.h>
 #include <kern/picirq.h>
 
+#include <inc/time.h>
+
 /* HINT: Note that selected CMOS
  * register is reset to the first one
  * after first access, i.e. it needs to be selected
@@ -109,9 +111,13 @@ get_time(void) {
 int
 gettime(void) {
     // LAB 12: your code here
-    int res = 0;
-
-
+    nmi_disable();
+	while (cmos_read8(RTC_AREG) & RTC_UPDATE_IN_PROGRESS);
+	int res = get_time();
+	if (res != get_time()) {
+		res = get_time();
+	}
+	nmi_enable();
     return res;
 }
 
