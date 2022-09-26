@@ -289,3 +289,89 @@ stat(const char *path, struct Stat *stat) {
 
     return res;
 }
+
+/******************* snapshot **************************************/
+int
+create_snapshot(char *comment, char *name) {
+    int dev_id_file = 'f';
+
+    int res;
+
+    struct Dev *dev;
+    if ((res = dev_lookup(dev_id_file, &dev)) < 0) return res;
+
+    if (!dev->dev_sh_create) {
+        return -E_NOT_SUPP;
+    }
+
+    res = (*dev->dev_sh_create)(comment,name);
+    if (res < 0) {
+        return res;
+    }
+    
+    return 0;
+}
+
+int 
+print_snapshot_list() {
+    int dev_id_file = 'f';
+
+    int res;
+
+    struct Dev *dev;
+    if ((res = dev_lookup(dev_id_file, &dev)) < 0) return res;
+
+    if (!dev->dev_sh_print) {
+        return -E_NOT_SUPP;
+    }
+
+    res = (*dev->dev_sh_print)();
+    if (res < 0) {
+        return res;
+    }
+    
+    return 0;
+}
+
+int
+snapshot_accept(char *name) {
+    int dev_id_file = 'f';
+
+    int res;
+
+    struct Dev *dev;
+    if ((res = dev_lookup(dev_id_file, &dev)) < 0) return res;
+
+    if (!dev->dev_sh_accept) {
+        return -E_NOT_SUPP;
+    }
+
+    res = (*dev->dev_sh_accept)(name);
+    if (res < 0) {
+        return res;
+    }
+    
+    return 0;
+}
+
+int
+snapshot_delete(char *name) {
+    int dev_id_file = 'f';
+
+    int res;
+
+    struct Dev *dev;
+    if ((res = dev_lookup(dev_id_file, &dev)) < 0) return res;
+
+    if (!dev->dev_sh_delete) {
+        return -E_NOT_SUPP;
+    }
+
+    res = (*dev->dev_sh_delete)(name);
+    if (res < 0) {
+        return res;
+    }
+    
+    return 0;
+}
+

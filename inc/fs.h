@@ -32,6 +32,13 @@ typedef uint32_t blockno_t;
 #define CLRBIT(v, n) ((v)[(n / 32)] &= ~(1U << ((n) % 32)))
 #define TSTBIT(v, n) ((v)[(n / 32)] & (1U << ((n) % 32)))
 
+/***************************** snaphot defines start ******************************/
+
+#define SNAP_BUF_SIZE 100
+#define MAX_SH_LENGTH 256
+
+/***************************** snaphot defines end  ******************************/
+
 struct File {
     char f_name[MAXNAMELEN]; /* filename */
     off_t f_size;            /* file size in bytes */
@@ -75,6 +82,11 @@ enum {
     FSREQ_STAT,
     FSREQ_FLUSH,
     FSREQ_REMOVE,
+    /* Snapshot requests */
+    FSREQ_SH_CREATE,
+    FSREQ_SH_PRINT,
+    FSREQ_SH_ACCEPT,
+    FSREQ_SH_DELETE,
     FSREQ_SYNC
 };
 
@@ -113,9 +125,34 @@ union Fsipc {
     struct Fsreq_remove {
         char req_path[MAXPATHLEN];
     } remove;
-
+    struct Fsreq_sh_create {
+        char comment[MAX_SH_LENGTH];
+        char name[MAX_SH_LENGTH];
+    } snapshot_create;
+    struct Fsreq_sh_accept {
+        char name[MAX_SH_LENGTH];
+    } snapshot_accept;
+    struct Fsreq_sh_delete {
+        char name[MAX_SH_LENGTH];
+    } snapshot_delete;
     /* Ensure Fsipc is one page */
     char _pad[PAGE_SIZE];
 };
+
+/***************************** snaphot structures start ******************************/
+struct Snapshot_header
+{
+  int date;
+  char comment[100];
+  uint32_t old_bitmap;
+  uint64_t prev_snapshot;
+};
+
+struct Snapshot_table
+{
+  uint32_t disk_addr;
+  char value;
+};
+/***************************** snaphot structures end  ******************************/
 
 #endif /* !JOS_INC_FS_H */

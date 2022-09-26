@@ -134,6 +134,12 @@ int dup(int oldfd, int newfd);
 int fstat(int fd, struct Stat *statbuf);
 int stat(const char *path, struct Stat *statbuf);
 
+//snapshot
+int create_snapshot(char *comment, char *name);
+int print_snapshot_list();
+int snapshot_accept(char *name);
+int snapshot_delete(char *name);
+
 /* file.c */
 int open(const char *path, int mode);
 int ftruncate(int fd, off_t size);

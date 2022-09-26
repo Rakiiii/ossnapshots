@@ -21,6 +21,11 @@ struct Dev {
     int (*dev_close)(struct Fd *fd);
     int (*dev_stat)(struct Fd *fd, struct Stat *stat);
     int (*dev_trunc)(struct Fd *fd, off_t length);
+    /**************** snapshots **********************************************/
+    int (*dev_sh_create)(char *comment, char *name);
+    int (*dev_sh_print)();
+    int (*dev_sh_accept)(char *name);
+    int (*dev_sh_delete)(char *name);
 };
 
 struct FdFile {

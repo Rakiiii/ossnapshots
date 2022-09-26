@@ -45,3 +45,18 @@ blockno_t alloc_block(void);
 
 /* test.c */
 void fs_test(void);
+
+/* snaphot */
+int printf_debug(const char *fmt, ...);
+
+int find_in_snapshot_list(struct File * f);
+int find_in_snapshot(struct File * snapshot,uint64_t my_addr, off_t * offset);
+int snapshot_file_read(struct File *f, void *buf, size_t count, off_t offset);
+int snapshot_file_write(struct File *f, const void *buf, size_t count, off_t offset);
+int merge_snapshot(struct File *snap);
+int snapshot_find_size(struct File * f);
+
+int fs_print_snapshot_list();
+int fs_create_snapshot(const char * comment, const char * name);
+int fs_accept_snapshot(const char *name);
+int fs_delete_snapshot(const char *name);

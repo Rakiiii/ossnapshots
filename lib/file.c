@@ -34,6 +34,11 @@ static ssize_t devfile_write(struct Fd *fd, const void *buf, size_t n);
 static int devfile_stat(struct Fd *fd, struct Stat *stat);
 static int devfile_trunc(struct Fd *fd, off_t newsize);
 
+static int devfile_create_snapshot(char *comment, char *name);
+static int devfile_print_snapshot_list();
+static int devfile_accept_snapshot(char *name);
+static int devfile_delete_snapshot(char *name);
+
 struct Dev devfile = {
         .dev_id = 'f',
         .dev_name = "file",
@@ -41,7 +46,13 @@ struct Dev devfile = {
         .dev_close = devfile_flush,
         .dev_stat = devfile_stat,
         .dev_write = devfile_write,
-        .dev_trunc = devfile_trunc};
+        .dev_trunc = devfile_trunc,
+        .dev_sh_create = devfile_create_snapshot,
+        .dev_sh_print = devfile_print_snapshot_list,
+        .dev_sh_accept = devfile_accept_snapshot,
+        .dev_sh_delete = devfile_delete_snapshot};
+
+
 
 /* Open a file (or directory).
  *
@@ -199,6 +210,69 @@ devfile_trunc(struct Fd *fd, off_t newsize) {
     fsipcbuf.set_size.req_size = newsize;
 
     return fsipc(FSREQ_SET_SIZE, NULL);
+}
+
+static int
+devfile_create_snapshot(char *comment, char *name) {
+    if (!comment || !name) {
+        return -E_INVAL;
+    }
+
+    if (strlen(comment) > MAX_SH_LENGTH || strlen(name) > MAX_SH_LENGTH) {
+        return -E_INVAL;
+    }
+    
+    strcpy(comment,fsipcbuf.snapshot_create.comment);
+    strcpy(name,fsipcbuf.snapshot_create.name);
+
+    int res = fsipc(FSREQ_SH_CREATE, NULL);
+    if (res < 0) return res;
+
+    return 0;
+}
+
+static int 
+devfile_print_snapshot_list() {
+    int res = fsipc(FSREQ_SH_PRINT, NULL);
+    if (res < 0) return res;
+
+    return 0;
+}
+
+static int
+devfile_accept_snapshot(char *name) {
+    if (!name) {
+        return -E_INVAL;
+    }
+
+    if (strlen(name) > MAX_SH_LENGTH) {
+        return -E_INVAL;
+    }
+    
+    strcpy(name, fsipcbuf.snapshot_accept.name);
+
+    int res = fsipc(FSREQ_SH_ACCEPT, NULL);
+    if (res < 0) return res;
+
+    return 0;
+}
+
+static int
+devfile_delete_snapshot(char *name) {
+    if (!name) {
+        return -E_INVAL;
+    }
+
+    if (strlen(name) > MAX_SH_LENGTH) {
+        return -E_INVAL;
+    }
+    
+    strcpy(name, fsipcbuf.snapshot_delete.name);
+
+    int res = fsipc(FSREQ_SH_DELETE, NULL);
+    if (res < 0) return res;
+
+    return 0;
 }
 
 /* Synchronize disk with buffer cache */

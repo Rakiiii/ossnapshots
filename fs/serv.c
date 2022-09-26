@@ -272,6 +272,30 @@ serve_sync(envid_t envid, union Fsipc *req) {
     return 0;
 }
 
+/************************************************** snapshot start ***************************************/
+
+int 
+snapshot_create(envid_t envid, union Fsipc *req) {
+    return fs_create_snapshot(req->snapshot_create.comment, req->snapshot_create.name);
+}
+
+int 
+snapshot_print(envid_t envid, union Fsipc *req) {
+    return fs_print_snapshot_list();
+}
+
+int 
+snapshot_accept(envid_t envid, union Fsipc *req) {
+    return fs_accept_snapshot(req->snapshot_accept.name);
+}
+
+int
+snapshot_delete(envid_t envid, union Fsipc *req) {
+    return fs_delete_snapshot(req->snapshot_delete.name);
+}
+
+/************************************************** snapshot end *****************************************/
+
 typedef int (*fshandler)(envid_t envid, union Fsipc *req);
 
 fshandler handlers[] = {
@@ -282,7 +306,11 @@ fshandler handlers[] = {
         [FSREQ_FLUSH] = serve_flush,
         [FSREQ_WRITE] = serve_write,
         [FSREQ_SET_SIZE] = serve_set_size,
-        [FSREQ_SYNC] = serve_sync};
+        [FSREQ_SYNC] = serve_sync,
+        [FSREQ_SH_CREATE] = snapshot_create,
+        [FSREQ_SH_PRINT] = snapshot_print,
+        [FSREQ_SH_ACCEPT] = snapshot_accept,
+        [FSREQ_SH_DELETE] = snapshot_delete};
 #define NHANDLERS (sizeof(handlers) / sizeof(handlers[0]))
 
 void
