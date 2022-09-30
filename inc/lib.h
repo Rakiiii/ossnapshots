@@ -134,11 +134,15 @@ int dup(int oldfd, int newfd);
 int fstat(int fd, struct Stat *statbuf);
 int stat(const char *path, struct Stat *statbuf);
 
-//snapshot
+// snapshot
 int create_snapshot(char *comment, char *name);
 int print_snapshot_list();
-int snapshot_accept(char *name);
-int snapshot_delete(char *name);
+int accept_snapshot(char *name);
+int delete_snapshot(char *name);
+
+// df
+int free_space_bytes();
+int busy_space_bytes();
 
 /* file.c */
 int open(const char *path, int mode);

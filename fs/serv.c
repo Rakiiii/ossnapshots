@@ -296,6 +296,20 @@ snapshot_delete(envid_t envid, union Fsipc *req) {
 
 /************************************************** snapshot end *****************************************/
 
+/************************************************** df start *********************************************/
+
+int 
+diskfree_free() {
+    return df_free_bytes();
+}
+
+int
+diskfree_busy() {
+    return df_busy_bytes();
+}
+
+/************************************************** df end ***********************************************/
+
 typedef int (*fshandler)(envid_t envid, union Fsipc *req);
 
 fshandler handlers[] = {
@@ -307,10 +321,14 @@ fshandler handlers[] = {
         [FSREQ_WRITE] = serve_write,
         [FSREQ_SET_SIZE] = serve_set_size,
         [FSREQ_SYNC] = serve_sync,
+        /* snapshot */
         [FSREQ_SH_CREATE] = snapshot_create,
         [FSREQ_SH_PRINT] = snapshot_print,
         [FSREQ_SH_ACCEPT] = snapshot_accept,
-        [FSREQ_SH_DELETE] = snapshot_delete};
+        [FSREQ_SH_DELETE] = snapshot_delete,
+        /* df */
+        [FSREQ_DF_FREE] = diskfree_free,
+        [FSREQ_DF_BUSY] = diskfree_busy};
 #define NHANDLERS (sizeof(handlers) / sizeof(handlers[0]))
 
 void

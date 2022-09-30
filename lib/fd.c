@@ -290,7 +290,7 @@ stat(const char *path, struct Stat *stat) {
     return res;
 }
 
-/******************* snapshot **************************************/
+/******************* snapshot start **************************************/
 int
 create_snapshot(char *comment, char *name) {
     int dev_id_file = 'f';
@@ -334,7 +334,7 @@ print_snapshot_list() {
 }
 
 int
-snapshot_accept(char *name) {
+accept_snapshot(char *name) {
     int dev_id_file = 'f';
 
     int res;
@@ -355,7 +355,7 @@ snapshot_accept(char *name) {
 }
 
 int
-snapshot_delete(char *name) {
+delete_snapshot(char *name) {
     int dev_id_file = 'f';
 
     int res;
@@ -375,3 +375,44 @@ snapshot_delete(char *name) {
     return 0;
 }
 
+/******************* snapshot end ****************************************/
+
+/******************* df start ********************************************/
+
+int
+free_space_bytes() {
+    int dev_id_file = 'f';
+
+    int res;
+
+    struct Dev *dev;
+    if ((res = dev_lookup(dev_id_file, &dev)) < 0) return res;
+
+    if (!dev->dev_df_free) {
+        return -E_NOT_SUPP;
+    }
+
+    res = (*dev->dev_df_free)();
+    
+    return res;
+}
+
+int
+busy_space_bytes() {
+    int dev_id_file = 'f';
+
+    int res;
+
+    struct Dev *dev;
+    if ((res = dev_lookup(dev_id_file, &dev)) < 0) return res;
+
+    if (!dev->dev_df_busy) {
+        return -E_NOT_SUPP;
+    }
+
+    res = (*dev->dev_df_busy)();
+    
+    return res;
+}
+
+/******************* df end **********************************************/

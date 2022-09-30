@@ -87,6 +87,9 @@ enum {
     FSREQ_SH_PRINT,
     FSREQ_SH_ACCEPT,
     FSREQ_SH_DELETE,
+    /* df requests */
+    FSREQ_DF_FREE,
+    FSREQ_DF_BUSY,
     FSREQ_SYNC
 };
 
@@ -146,6 +149,7 @@ struct Snapshot_header
   char comment[100];
   uint32_t old_bitmap;
   uint64_t prev_snapshot;
+  uint64_t next_snapshot;
 };
 
 struct Snapshot_table

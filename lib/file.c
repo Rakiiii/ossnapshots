@@ -39,6 +39,9 @@ static int devfile_print_snapshot_list();
 static int devfile_accept_snapshot(char *name);
 static int devfile_delete_snapshot(char *name);
 
+static int devfile_df_free();
+static int devfile_df_busy();
+
 struct Dev devfile = {
         .dev_id = 'f',
         .dev_name = "file",
@@ -50,7 +53,9 @@ struct Dev devfile = {
         .dev_sh_create = devfile_create_snapshot,
         .dev_sh_print = devfile_print_snapshot_list,
         .dev_sh_accept = devfile_accept_snapshot,
-        .dev_sh_delete = devfile_delete_snapshot};
+        .dev_sh_delete = devfile_delete_snapshot,
+        .dev_df_free = devfile_df_free,
+        .dev_df_busy = devfile_df_busy};
 
 
 
@@ -221,9 +226,13 @@ devfile_create_snapshot(char *comment, char *name) {
     if (strlen(comment) > MAX_SH_LENGTH || strlen(name) > MAX_SH_LENGTH) {
         return -E_INVAL;
     }
-    
-    strcpy(comment,fsipcbuf.snapshot_create.comment);
-    strcpy(name,fsipcbuf.snapshot_create.name);
+
+    // cprintf("comment size %lu before copy:%s; name size %lu before copy:%s;\n", strlen(comment), comment, strlen(name), name);
+
+    strcpy(fsipcbuf.snapshot_create.comment, comment);
+    strcpy(fsipcbuf.snapshot_create.name, name);
+
+    // cprintf("comment size %lu before copy:%s; name size %lu before copy:%s;\n", strlen(fsipcbuf.snapshot_create.comment), fsipcbuf.snapshot_create.comment, strlen(fsipcbuf.snapshot_create.name), fsipcbuf.snapshot_create.name);
 
     int res = fsipc(FSREQ_SH_CREATE, NULL);
     if (res < 0) return res;
@@ -249,7 +258,7 @@ devfile_accept_snapshot(char *name) {
         return -E_INVAL;
     }
     
-    strcpy(name, fsipcbuf.snapshot_accept.name);
+    strcpy(fsipcbuf.snapshot_accept.name, name);
 
     int res = fsipc(FSREQ_SH_ACCEPT, NULL);
     if (res < 0) return res;
@@ -267,12 +276,26 @@ devfile_delete_snapshot(char *name) {
         return -E_INVAL;
     }
     
-    strcpy(name, fsipcbuf.snapshot_delete.name);
+    strcpy(fsipcbuf.snapshot_delete.name, name);
 
     int res = fsipc(FSREQ_SH_DELETE, NULL);
     if (res < 0) return res;
 
     return 0;
+}
+
+static int
+devfile_df_free() {
+    int res = fsipc(FSREQ_DF_FREE, NULL);
+
+    return res;
+}
+
+static int
+devfile_df_busy() {
+    int res = fsipc(FSREQ_DF_BUSY, NULL);
+
+    return res;
 }
 
 /* Synchronize disk with buffer cache */

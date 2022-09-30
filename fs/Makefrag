@@ -34,6 +34,10 @@ USERAPPS :=		$(OBJDIR)/user/init \
 			$(OBJDIR)/user/vdate \
 			$(OBJDIR)/user/createsh \
 			$(OBJDIR)/user/printsh \
+			$(OBJDIR)/user/acceptsh \
+			$(OBJDIR)/user/deletesh \
+			$(OBJDIR)/user/df \
+			$(OBJDIR)/user/testsh \
 
 
 FSIMGFILES := $(FSIMGTXTFILES) $(USERAPPS)

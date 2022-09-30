@@ -17,6 +17,28 @@ bool SNAPSHOT_DEBUG = true;
 
 #define printf_debug(M, ...) if (SNAPSHOT_DEBUG) cprintf("[%s:%d] Note: " M "\n",__FILE__, __LINE__,##__VA_ARGS__);
 
+//Функция, выводящая актуальное состояние bitmap
+// 0 если занят
+int 
+debug_print_bitmap() {
+    char res;
+	
+    for (blockno_t blockno = 0; blockno < super->s_nblocks; ++blockno) {
+
+        if (blockno % 32 == 0) {
+            printf_debug("\n");
+        }
+
+        res = (bitmap[blockno / 32] & (1 << (blockno % 32))) >> (blockno % 32);
+        
+        printf_debug("%d",res);
+  }
+
+  printf_debug("\n");
+
+  return 0;
+}
+
 
 static int 
 internal_print_snapshot_list(struct File *snap, struct Snapshot_header header);
@@ -82,7 +104,7 @@ alloc_block(void) {
         }
     }
 
-    return 0;
+    return -E_NO_DISK;
 }
 
 /* Validate the file system bitmap.
@@ -126,6 +148,7 @@ fs_init(void) {
     current_snapshot_file = (uint64_t *) (super + 1);
     extra_snapshot_file = (uint64_t *) (current_snapshot_file + 1);
     if (*current_snapshot_file != 0) {
+        printf_debug("read current snapshot\n");
         struct Snapshot_header header;
         file_read((struct File *)*current_snapshot_file, &header, sizeof(header),0);
     }
@@ -136,6 +159,17 @@ fs_init(void) {
     bitmap = diskaddr(2);
 
     check_bitmap();
+
+    // if ((*extra_snapshot_file != 0) && (*current_snapshot_file == 0)) {
+    //     //cprintf("help_curr_snap = %llx", (unsigned long long)*help_curr_snap);
+    //     *current_snapshot_file = *extra_snapshot_file;
+    //     *extra_snapshot_file = 0;
+    //     flush_block(super);
+    //     return 1;
+    // } else {
+    //     cprintf("Error in activate_snapshot();\n");
+    //     return 0;
+    // }
 }
 
 /* Find the disk block number slot for the 'filebno'th block in file 'f'.
@@ -273,6 +307,8 @@ skip_slash(const char *p) {
  * element into lastelem. */
 static int
 walk_path(const char *path, struct File **pdir, struct File **pf, char *lastelem) {
+    printf_debug("Walk_path path: %s\n", path);
+
     const char *p;
     char name[MAXNAMELEN];
     struct File *dir, *f;
@@ -317,6 +353,9 @@ walk_path(const char *path, struct File **pdir, struct File **pf, char *lastelem
     if (pdir)
         *pdir = dir;
     *pf = f;
+
+    printf_debug("File with path %s find, file name %s\n", path, name);
+
     return 0;
 }
 
@@ -332,7 +371,10 @@ file_create(const char *path, struct File **pf) {
     int res;
     struct File *dir, *filp;
 
-    if (!(res = walk_path(path, &dir, &filp, name))) return -E_FILE_EXISTS;
+    if ((res = walk_path(path, &dir, &filp, name)) == 0) { 
+        printf_debug("Founded file name %s\n", name);
+        return -E_FILE_EXISTS;
+    }
     if (res != -E_NOT_FOUND || dir == 0) return res;
     if ((res = dir_alloc_file(dir, &filp)) < 0) return res;
 
@@ -355,13 +397,19 @@ file_open(const char *path, struct File **pf) {
 
 ssize_t
 file_read(struct File *f, void *buf, size_t count, off_t offset) {
+    if (*current_snapshot_file != 0 && find_in_snapshot_list(f) == false && f->f_type != FTYPE_DIR) {
+        return snapshot_file_read(f, buf, count, offset);
+    } else {
+        return pure_file_read(f, buf, count, offset);
+    }
+}
+
+// Чтение файлов с диска без учета снэпшотов
+ssize_t
+pure_file_read(struct File *f, void *buf, size_t count, off_t offset) {
     int r, bn;
     off_t pos;
     char *blk;
-
-    if (*current_snapshot_file != 0 && find_in_snapshot_list(f)==0 && f->f_type != FTYPE_DIR) {
-        return snapshot_file_read(f,buf,count,offset);
-    }
 
     if (offset >= f->f_size) {
         return 0;
@@ -415,30 +463,54 @@ file_write(struct File *f, const void *buf, size_t count, off_t offset) {
 
     printf_debug("writing in file %s...\n",f->f_name);
 
-    if (*current_snapshot_file != 0 && find_in_snapshot_list(f)==0) { 
-        if (find_in_snapshot_list(f)==0) {
-            return snapshot_file_write(f,buf,count,offset);
+    if (*current_snapshot_file != 0 && find_in_snapshot_list(f) == false) { 
+        if (find_in_snapshot_list(f) == 0) {
+            return snapshot_file_write(f, buf, count, offset);
         }
     }
 
-    int r, bn;
-    off_t pos;
-    char *blk;
+    return pure_file_write(f, buf, count, offset);
+    // int r, bn;
+    // off_t pos;
+    // char *blk;
 
-    // Extend file if necessary
-    if (offset + count > f->f_size) {
-        if ((r = file_set_size(f, offset + count)) < 0) {
-            return r;
-        }
-    }
+    // // Extend file if necessary
+    // if (offset + count > f->f_size) {
+    //     if ((r = file_set_size(f, offset + count)) < 0) {
+    //         return r;
+    //     }
+    // }
 
-    for (pos = offset; pos < offset + count;) {
+    // for (pos = offset; pos < offset + count;) {
 
-        if ((r = file_get_block(f, pos / BLKSIZE, &blk)) < 0) {
-            return r;
-        }
+    //     if ((r = file_get_block(f, pos / BLKSIZE, &blk)) < 0) {
+    //         return r;
+    //     }
 
-        bn = MIN(BLKSIZE - pos % BLKSIZE, offset + count - pos);
+    //     bn = MIN(BLKSIZE - pos % BLKSIZE, offset + count - pos);
+    //     memmove(blk + pos % BLKSIZE, buf, bn);
+    //     pos += bn;
+    //     buf += bn;
+    // }
+
+    // return count;
+}
+
+// Запись в файл без учета снапшотов
+ssize_t
+pure_file_write(struct File *f, const void *buf, size_t count, off_t offset) {
+    printf_debug("Value %s writen to file %s\n",(char *)buf, f->f_name);
+    int res;
+
+    /* Extend file if necessary */
+    if (offset + count > f->f_size)
+        if ((res = file_set_size(f, offset + count)) < 0) return res;
+
+    for (off_t pos = offset; pos < offset + count;) {
+        char *blk;
+        if ((res = file_get_block(f, pos / BLKSIZE, &blk)) < 0) return res;
+
+        uint32_t bn = MIN(BLKSIZE - pos % BLKSIZE, offset + count - pos);
         memmove(blk + pos % BLKSIZE, buf, bn);
         pos += bn;
         buf += bn;
@@ -515,7 +587,7 @@ file_set_size(struct File *f, off_t newsize) {
 
 
     // если файл в снэпшоте
-    if ((current_snapshot_file != NULL) && (*current_snapshot_file != 0) && find_in_snapshot_list(f)==0) {
+    if ((current_snapshot_file != NULL) && (*current_snapshot_file != 0) && find_in_snapshot_list(f) == false ) {
         char *addr;
         off_t buf_offset;
         uint32_t disk_addr;
@@ -571,7 +643,7 @@ file_flush(struct File *f) {
   uint32_t *pdiskbno;
 
   if (*current_snapshot_file != 0) {  
-    if (find_in_snapshot_list(f)==1) {
+    if (find_in_snapshot_list(f) == true) {
       for (i = 0; i < (f->f_size + BLKSIZE - 1) / BLKSIZE; i++) {
         
         if (file_block_walk(f, i, &pdiskbno, 0) < 0 ||
@@ -630,32 +702,45 @@ fs_sync(void) {
 
 
 
-/********************** snapshot ****************************************************************/
+/********************** snapshot start ***************************************************************/
 
 /********************** utils start ******************************************************************/
 
 //Ищет данный адрес по всем снимкам, начиная с самого последнего.
-int find_in_snapshot(struct File * snapshot,uint64_t my_addr, off_t * offset) {
-    int r;
+// записывает в offset смещение в файле снапшота до адресса
+int find_in_snapshot(struct File *snapshot, uint64_t my_addr, off_t *offset) {
+
+    int amount_of_readed;
     uint32_t disk_addr = (uint32_t)(my_addr - DISKMAP);
 
-    char buf[SNAP_BUF_SIZE];
-    char * buffer;
+    char read_buffer[SNAP_BUF_SIZE];
+    char *current_read_addres;
   
-    for (int pos=sizeof(struct Snapshot_header);pos<snapshot->f_size;pos+=SNAP_BUF_SIZE) {
+    // Читаем весь файл снапшота после заголовка
+    for (int pos = sizeof(struct Snapshot_header); pos < snapshot->f_size; pos += SNAP_BUF_SIZE) {
 
-        if ((r=file_read(snapshot,buf,SNAP_BUF_SIZE,pos))<0) {
-            return r;
+        // читайм пачку данных из файла снапшота
+        if ((amount_of_readed = pure_file_read(snapshot, read_buffer, SNAP_BUF_SIZE, pos)) < 0) {
+            printf_debug("End of snapshot file %s\n", snapshot->f_name);
+            return amount_of_readed;
         }
 
-        buffer = buf;
+        // просматриваем все прочитанные данные
+        current_read_addres = read_buffer;
 
-        for (int i=0;i<r/5;i++) {
-            if (*(uint32_t *)buffer == disk_addr) {
-                *offset = pos + i*5;
+        for (int i = 0; i < amount_of_readed / FIELDSIZE; i++) {
+
+            // адресс найден
+            if (*(uint32_t *)current_read_addres == disk_addr) {
+
+                // записываем смешенние в файле снапшота до нужного адресса
+                *offset = pos + i * FIELDSIZE;
+
                 return 1;
             } else {
-                buffer+=5;
+
+                // смотрим следующий адресс
+                current_read_addres += FIELDSIZE;
             }
         }
     }
@@ -663,32 +748,42 @@ int find_in_snapshot(struct File * snapshot,uint64_t my_addr, off_t * offset) {
     return 0;
 }
 
-//Ищет реальный размер файла по снэпшотам.
+//Ищет фактический объем данных в файле снапшота
 off_t snapshot_find_size(struct File * f) {
 
-    char * addr = (char *)&f->f_size;
-    struct File * snapshot = (struct File *)(*current_snapshot_file);
-    struct File * buf_snapshot;
+    char *addr = (char *)&f->f_size;
+
+    struct File *snapshot = (struct File *)(*current_snapshot_file);
+
+    struct File *buf_snapshot;
+
     int r;
+
     int my_number;
-    char * number = (char *)&my_number;
+
+    char *number = (char *)&my_number;
+
     off_t buf_offset;
 
-    for (int i=0;i<sizeof(uint32_t);i++) {
+    for (int i = 0; i < sizeof(uint32_t); i++) {
+
         buf_snapshot = snapshot;
 
-        while(buf_snapshot!=NULL) {
+        while(buf_snapshot != NULL) {
+
             if ( (r = find_in_snapshot(buf_snapshot, (uint64_t)addr, &buf_offset)) == 1) {
+
                 file_read(buf_snapshot, number+i, 1, buf_offset + sizeof(uint32_t));
+
                 break;  
             } else if (!r) {
                 if (
-                    (r=file_read(
+                    (r = file_read(
                         buf_snapshot,
                         &buf_snapshot,
                         sizeof(struct File *),
                         sizeof(struct Snapshot_header)-sizeof(uint64_t))
-                        )<0
+                        ) < 0
                     ) {
                         return r;
                     }
@@ -697,7 +792,7 @@ off_t snapshot_find_size(struct File * f) {
             }
         }
 
-        if (buf_snapshot==NULL) {
+        if (buf_snapshot == NULL) {
             number[i] = *addr;
         }
     
@@ -707,32 +802,25 @@ off_t snapshot_find_size(struct File * f) {
     return my_number;
 }
 
-//Ищет данный файл в списке снимков. 
-//Возвращает 1 в случае успеха.
-int find_in_snapshot_list(struct File * f) {
-    int r;
-    struct File * next_snapshot = (struct File *)*current_snapshot_file;
+//Ищет данный файл в списке снимков в текущей ветке
+//Возвращает true в случае успеха.
+bool 
+find_in_snapshot_list(struct File * f) {
+    struct Snapshot_header snapshot_header;
 
-    while (next_snapshot!=NULL) {
+    struct File * prev_snapshot_file = (struct File *)*current_snapshot_file;
 
-        if (f==next_snapshot) {
-            return 1;
+    while (prev_snapshot_file != NULL) {
+
+        if ( f == prev_snapshot_file) {
+            return true;
         } else {
-
-            if ((r=file_read(
-                        (struct File *)next_snapshot,
-                        &next_snapshot,
-                        sizeof(struct File *),
-                        sizeof(struct Snapshot_header)-sizeof(uint64_t)
-                        )
-                    ) < 0 ) {
-
-                    return r;
-                }
+            pure_file_read(prev_snapshot_file, &snapshot_header, sizeof(struct Snapshot_header), HEADERPOS);
+            prev_snapshot_file = (struct File *) snapshot_header.prev_snapshot;
+        }
     }
-  }
 
-  return 0;
+  return false;
 }
 
 /********************** utils end   ******************************************************************/
@@ -742,20 +830,25 @@ int find_in_snapshot_list(struct File * f) {
 //Читает файл сначала по всем снимкам, далее, если нужный адрес не найден, читает непосредственно
 //из файловой системы. И так с каждым адресом.
 int snapshot_file_read(struct File *f, void *buf, size_t count, off_t offset) {
-    int r, bn;
+    int r, bn, address_in_file_exist;
     off_t pos;
 
     char * addr;
     off_t buf_offset;
 
+    // выпилить
     if (offset >= snapshot_find_size(f)) {
         return 0;
     }
 
     count = MIN(count, snapshot_find_size(f) - offset);
 
-    struct File * snapshot = (struct File *) *current_snapshot_file; 
-    struct File * buf_snapshot;
+    bool is_address_found = false;
+
+    struct Snapshot_header header;
+
+    struct File *snapshot_for_check_file;
+
     for (pos = offset; pos < offset + count;) {
 
         if ((r = file_get_block(f, pos / BLKSIZE, &addr)) < 0) {
@@ -765,31 +858,41 @@ int snapshot_file_read(struct File *f, void *buf, size_t count, off_t offset) {
         addr = addr + pos % BLKSIZE; 
         bn = MIN(BLKSIZE - pos % BLKSIZE, offset + count - pos);
 
-        for (int i=0;i<bn;i++) {
-            buf_snapshot = snapshot;
+        for (int i=0; i < bn; i++) {
 
-            while(buf_snapshot!=0) {
+            is_address_found = false;
+
+            snapshot_for_check_file = (struct File *) *current_snapshot_file;
+
+            // перебираем все файлы со снапшотами в ветке
+            while(snapshot_for_check_file != 0 && !is_address_found) {
                 
-                if ( (r = find_in_snapshot(buf_snapshot, (uint64_t)addr, &buf_offset)) == 1) {
-                    file_read(buf_snapshot, buf, 1, buf_offset + sizeof(uint32_t));
-                    break;  
-                } else if (!r) {
-                    if (
-                        (r=file_read(
-                            buf_snapshot,
-                            &buf_snapshot,
-                            sizeof(struct File *),
-                            sizeof(struct Snapshot_header)-sizeof(uint64_t))
-                            )<0
-                        ) {
-                            return r;
-                        }
+                // если текущий файл содержит нужный адресс
+                if ( (address_in_file_exist = find_in_snapshot(snapshot_for_check_file, (uint64_t)addr, &buf_offset)) == 1) {
+
+                    // читаем значение по адрессу из файла со снапшотом
+                    pure_file_read(snapshot_for_check_file, buf, VALUESIZE, buf_offset + ADDRESSSIZE);
+
+                    is_address_found = true;
+                    
+                // если адреса в файле снапшота нет
+                } else if (!address_in_file_exist) {
+
+                    // смотрим следующий файл снапшота в ветке
+                    pure_file_read(snapshot_for_check_file, &header, sizeof(struct Snapshot_header), HEADERPOS);
+                    snapshot_for_check_file = (struct File *) header.prev_snapshot;
+
                 } else { 
-                    return r;
+                    return address_in_file_exist;
                 }
             }
+            
+            // if (!is_address_found) {
+            //     pure_file_read(f, buf,)
+            // }
+            
 
-            if (!buf_snapshot) {
+            if (!snapshot_for_check_file) {
                 *(char *)buf = *addr;
             }
 
@@ -797,7 +900,7 @@ int snapshot_file_read(struct File *f, void *buf, size_t count, off_t offset) {
             buf++;
         }
 
-        pos+=bn;
+        pos += bn;
     }
   
     return count;
@@ -817,25 +920,32 @@ int snapshot_file_write(struct File *f, const void *buf, size_t count, off_t off
 
     off_t buf_offset;
 
-    // try to fix
+
+    // Смерджить этот блок со следуюшим (тут пишем новые размеры)
     if (offset + count > snapshot_find_size(f)) {
+
         addr = (char *)&f->f_size;
         new_size = offset + count;
 
-        for (int i=0; i<sizeof(new_size);i++) {
+        for (int i = 0; i < sizeof(new_size); i++) {
             addr += i;
 
-            // ищем адрес 
+            // если перезаписываем данные которые уже есть
             if ( (r = find_in_snapshot(snapshot, (uint64_t)addr, &buf_offset)) == 1) {
-                file_write(snapshot, (char *)&new_size + i, 1, buf_offset + sizeof(uint32_t)); 
+
+                // перезаписывем существующий адрес
+                pure_file_write(snapshot, (char *)&new_size + i, VALUESIZE, buf_offset + ADDRESSSIZE); 
             } else {
+
                 disk_addr = (uint32_t)((uint64_t)addr - DISKMAP);
 
-                file_write(snapshot, &disk_addr, sizeof(uint32_t), snap_offset);
-                snap_offset+=sizeof(uint32_t);
+                // Дописываем новый адрес в файл снапшота
+                pure_file_write(snapshot, &disk_addr, ADDRESSSIZE, snap_offset);
+                snap_offset += ADDRESSSIZE;
         
-                file_write(snapshot, (char *)&new_size + i, 1, snap_offset);
-                snap_offset++;
+                // Дописывем значение в файл снапшота
+                pure_file_write(snapshot, (char *)&new_size + i, VALUESIZE, snap_offset);
+                snap_offset += VALUESIZE;
             }
 
         }
@@ -850,18 +960,23 @@ int snapshot_file_write(struct File *f, const void *buf, size_t count, off_t off
         addr = addr + pos % BLKSIZE; 
         bn = MIN(BLKSIZE - pos % BLKSIZE, offset + count - pos);
 
-        for (int i=0;i<bn;i++) {
+        for (int i = 0; i < bn; i++) {
 
+            // Если файл в файле есть
             if ( (r = find_in_snapshot(snapshot,(uint64_t)addr, &buf_offset)) == 1) {
-                file_write(snapshot, buf, 1, buf_offset + sizeof(uint32_t));
+
+                // Перезаписываем значение по адресу
+                pure_file_write(snapshot, buf, VALUESIZE, buf_offset + ADDRESSSIZE);
+
             } else if (!r) {
+
                 disk_addr = (uint32_t)((uint64_t)addr - DISKMAP);
 
-                file_write(snapshot, &disk_addr, sizeof(uint32_t), snap_offset); 
-                snap_offset+=sizeof(uint32_t);
+                pure_file_write(snapshot, &disk_addr, ADDRESSSIZE, snap_offset); 
+                snap_offset += ADDRESSSIZE;
 
-                file_write(snapshot, buf, 1, snap_offset); 
-                snap_offset ++;
+                pure_file_write(snapshot, buf, VALUESIZE, snap_offset); 
+                snap_offset += VALUESIZE;
             } else { 
                 return r;
             }
@@ -876,21 +991,103 @@ int snapshot_file_write(struct File *f, const void *buf, size_t count, off_t off
   return count;
 }
 
+int
+concat_snapshot(struct File *master_snap_file) {
+
+    struct File *prev_snapshot_file;
+
+    struct Snapshot_header master_snapshot_header, prev_header;
+
+    file_read(master_snap_file, &master_snapshot_header, sizeof(struct Snapshot_header), HEADERPOS);
+  
+    if (master_snapshot_header.prev_snapshot) {
+        prev_snapshot_file = (struct File *)master_snapshot_header.prev_snapshot;
+    } else {
+        printf_debug("Snapshots tree with level 1 merge\n");
+        return 0;
+    }
+
+    // читаем заголовок для предыдущего снэпшота
+    file_read(prev_snapshot_file, &prev_header, sizeof(struct Snapshot_header), HEADERPOS);
+
+    //надо слить snap и prev_snap
+
+    // у файла в который вливаем снэпшот и вливаемого файла прочитанный только заголовки
+    off_t prev_snap_offset = sizeof(struct Snapshot_header);
+    off_t master_snap_offset = sizeof(struct Snapshot_header);
+
+    // адресса прочитанный снапшотов
+    uint32_t address_in_prev_snapshot, address_in_master_snapshot;
+
+    // значение прочитанной из предыдущего снапшота
+    uint8_t value_from_prev_snapshot;
+
+    // если адреса совпали то пора писать в мастер снапшот
+    bool adresses_not_equals = false;
+
+    // читаем все подряд адреса из вливаемого снапшота
+    while (file_read(prev_snapshot_file, &address_in_prev_snapshot, ADDRESSSIZE, prev_snap_offset) == ADDRESSSIZE) {
+
+        master_snap_offset = sizeof(struct Snapshot_header);
+
+        // читаем значение из вливаемого снапшота
+        file_read(prev_snapshot_file, &value_from_prev_snapshot, VALUESIZE, prev_snap_offset + ADDRESSSIZE);
+
+        adresses_not_equals = true;
+        
+        // ишем совпадающие адреса в мастер снапшоте
+        while ((file_read(master_snap_file, &address_in_master_snapshot, ADDRESSSIZE, master_snap_offset) == ADDRESSSIZE) && adresses_not_equals) {
+            
+            if (address_in_prev_snapshot == address_in_master_snapshot) {
+                adresses_not_equals = false;
+            }
+
+            master_snap_offset += FIELDSIZE;
+        }
+        
+        // если одинаковых адресов не найдено то надо записать новый адрес с новым значеним в файл мастер снапшота
+        if (adresses_not_equals == true) {
+            file_write(master_snap_file, &address_in_prev_snapshot, ADDRESSSIZE, master_snap_file->f_size);
+            file_write(master_snap_file, &value_from_prev_snapshot, VALUESIZE, master_snap_file->f_size);
+        }
+
+        prev_snap_offset += FIELDSIZE;
+    }
+
+
+    // может лучше не удалять и использовать временный снапшот файл ???
+    // fs_delete_snapshot(prev_snapshot_file->f_name);
+    master_snapshot_header.prev_snapshot = prev_header.prev_snapshot;
+    file_write(master_snap_file, &master_snapshot_header, sizeof(struct Snapshot_header), HEADERPOS);
+
+    file_flush(master_snap_file);
+
+    return 1;
+}
+
 /********************** logic end   ******************************************************************/
 
 /************************ functions start ************************************************************/
 int fs_create_snapshot(const char * comment, const char * name) {
     
-    printf_debug("Welcome to create_snapshot!\n");
+    printf_debug("Start creating snapshot with name: %s; and comment: %s!\n", name, comment);
     
-    struct File * new_snapshot_file;
+    struct File *new_snapshot_file;
     int file_create_result, alloc_block_result;
     char * addr;
     struct Snapshot_header new_snapshot_header;
 
     // Создаем файл для хранения снепшота
-    if ((file_create_result = file_create(name, &new_snapshot_file)) < 0) {
-        printf_debug("File for snapshot cannot be created\n");
+    file_create_result = file_create(name, &new_snapshot_file);
+
+    if (file_create_result == -E_FILE_EXISTS) {
+        printf_debug("File for snapshot already exist\n");
+        return file_create_result;
+    } else if(file_create_result == -E_NOT_FOUND) {
+        printf_debug("Directory for file for snapshot not found\n");
+        return file_create_result;
+    } else if(file_create_result < 0) {
+        printf_debug("File for snapshot cannot be created: error code %d\n", file_create_result);
         return file_create_result;
     }
 
@@ -899,7 +1096,21 @@ int fs_create_snapshot(const char * comment, const char * name) {
         printf_debug("Snapshot already exist\n");
         file_flush((struct File *)*current_snapshot_file);
     } else {
+        printf_debug("Creating first snapshot in tree\n");
         fs_sync();
+    }
+
+    if (*current_snapshot_file) {
+        printf_debug("Snapshot already exist\n");
+        file_flush((struct File *)*current_snapshot_file);
+    } else {
+        if ((*extra_snapshot_file) != 0) {
+            *current_snapshot_file = *extra_snapshot_file;
+            *extra_snapshot_file = 0;
+            file_flush((struct File *)*current_snapshot_file);
+        } else {
+            fs_sync();
+        }
     }
 
     // выделяем блок
@@ -921,11 +1132,24 @@ int fs_create_snapshot(const char * comment, const char * name) {
 
 
     new_snapshot_header.prev_snapshot = *current_snapshot_file;
+    new_snapshot_header.next_snapshot = 0;
+
+    printf_debug("Before setup next snap for value %llx",(unsigned long long)*current_snapshot_file);
+
+    if (*current_snapshot_file != 0) {
+        struct Snapshot_header current_snapshot_header;
+        pure_file_read((struct File *)(*current_snapshot_file), &current_snapshot_header, sizeof(struct Snapshot_header), HEADERPOS);
+        current_snapshot_header.next_snapshot = (uint64_t)new_snapshot_file;
+        pure_file_write((struct File *)(*current_snapshot_file), &current_snapshot_header, sizeof(struct Snapshot_header), HEADERPOS);
+        printf_debug("For snapshot %s added next with name %s\n",((struct File *)(*current_snapshot_file))->f_name, new_snapshot_file->f_name);
+    }
+    
+
     strcpy(new_snapshot_header.comment, comment);
     new_snapshot_header.date = sys_gettime();
 
     *current_snapshot_file = (uint64_t) new_snapshot_file;
-    file_write(new_snapshot_file, &new_snapshot_header, sizeof(struct Snapshot_header), 0);
+    pure_file_write(new_snapshot_file, &new_snapshot_header, sizeof(struct Snapshot_header), HEADERPOS);
     flush_block(current_snapshot_file);
 
     printf_debug(
@@ -952,58 +1176,171 @@ int fs_create_snapshot(const char * comment, const char * name) {
   return 0;
 }
 
-//Применяет снимок по имени.
-int
-accept_snapshot(const char *name) {
+// Применяет снимок по имени.
+// int
+// fs_accept_snapshot(const char *name) {
 
-    struct Snapshot_header new_header;
-    struct File *snapshot_file;
-    struct File *help_snap;
+//     struct Snapshot_header snapshot_for_accept_header;
+
+//     struct File *snapshot_for_accept_file;
+
+//     if (*current_snapshot_file) {
+//         snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
+//     } else {
+//         printf_debug("No snapshot created for accept\n");
+//         return 0;
+//     }
+  
+//     bool not_found_end_from_root = true;
+
+//     //ищем файл снапшота по названию
+//     while (strcmp(snapshot_for_accept_file->f_name, name) != 0) {
+
+//         file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+    
+//         if (snapshot_for_accept_header.prev_snapshot != 0 && not_found_end_from_root) {
+//             snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.prev_snapshot;
+//         } else {
+            
+//             if (not_found_end_from_root) {
+//                 snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
+//                 file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+//             }
+
+//             not_found_end_from_root = false;
+    
+//             if (snapshot_for_accept_header.next_snapshot != 0) {
+//                 snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.next_snapshot;
+//             } else {
+//                 snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
+//                 file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+//                 printf_debug("There is no snapshot with name %s;\n", name);
+//                 printf_debug("Current snapshot name is %s\n", snapshot_for_accept_file->f_name);
+
+//                 if (snapshot_for_accept_header.next_snapshot != 0) {
+//                     snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.next_snapshot;
+//                     file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+
+//                     printf_debug("Next snapshot from current is %s\n", snapshot_for_accept_file->f_name);
+//                 }
+                
+//                 return 0;
+//             }
+
+//         }
+
+//         printf_debug("Checking snap %s\n", snapshot_for_accept_file->f_name);
+//     }
+
+//     // Читаем заголовок найденного снапшота
+//     file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+
+//     fs_sync();
+    
+//     *current_snapshot_file = snapshot_for_accept_header.prev_snapshot;
+//     flush_block(super);
+
+//     return 1;
+// }
+
+int
+fs_accept_snapshot(const char *name) {
+
+    printf_debug("Try to accept snapshot with name %s\n", name);
+
+    struct Snapshot_header snapshot_for_accept_header;
+
+    struct File *snapshot_for_accept_file;
+
+    struct File *snapshots_before_accepted_file;
+
     uint8_t *virt_address;
+
     uint32_t address;
     uint8_t value;
     off_t offset = sizeof(struct Snapshot_header);
 
     if (*current_snapshot_file) {
-        snapshot_file = (struct File *)(*current_snapshot_file);
+        snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
     } else {
-        printf_debug("error1 in accept_snapshot\n");
-        return 0;
-    }
-  
-    //ищем файл снапшота по названию
-    while (strcmp(snapshot_file->f_name, name) != 0) {
-
-        file_read(snapshot_file, &new_header, sizeof(struct Snapshot_header), 0);
-    
-        if (new_header.prev_snapshot != 0) {
-            snapshot_file = (struct File *)new_header.prev_snapshot;
+        if ((*extra_snapshot_file) != 0) {
+            *current_snapshot_file = *extra_snapshot_file;
+            *extra_snapshot_file = 0;
+            flush_block(super);
+            snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
         } else {
-            cprintf("There is no such snapshot\n");
+            printf_debug("No snapshot created for accept\n");
             return 0;
         }
     }
+  
+    //ищем файл снапшота по названию
+    // while (strcmp(snapshot_for_accept_file->f_name, name) != 0) {
 
-    //сливаем все снапшоты до применяемого в один (меняем ссылку на предыдущий в применяемом на ноль)
-    file_read(snapshot_file, &new_header, sizeof(struct Snapshot_header), 0);
-    if (new_header.prev_snapshot != 0) {
+    //     file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+    
+    //     if (snapshot_for_accept_header.prev_snapshot != 0) {
+    //         snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.prev_snapshot;
+    //     } else {
+    //         printf_debug("There is no snapshot with name %s;\n", name);
+    //         return 0;
+    //     }
+    // }
 
-        help_snap = (struct File *)new_header.prev_snapshot;
+    bool not_found_end_from_root = true;
 
-        while (merge_snapshot(help_snap)) {}
+    while (strcmp(snapshot_for_accept_file->f_name, name) != 0) {
 
-        //new_header.prev_snapshot = 0;
-        //file_write(snap, &new_header, sizeof(struct Snapshot_header), 0);
+        file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+    
+        if (snapshot_for_accept_header.prev_snapshot != 0 && not_found_end_from_root) {
+            snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.prev_snapshot;
+        } else {
+            
+            if (not_found_end_from_root) {
+                snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
+                file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+                not_found_end_from_root = false;
+            }
+    
+            if (snapshot_for_accept_header.next_snapshot != 0) {
+                snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.next_snapshot;
+            } else {
+                printf_debug("There is no snapshot with name %s\n", name);
+                return 0;
+            }
 
-        //применяем все изменения и приводим фс в актуальное состояние    
-        while (file_read(help_snap, &address, 4, offset) == 4) {
-            file_read(help_snap, &value, 1, offset + 4);
+        }
+    }
+
+    // Читаем заголовок найденного снапшота
+    file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+
+    // если снепшот не корневой
+    if (snapshot_for_accept_header.prev_snapshot != 0) {
+
+        //сливаем все снапшоты до применяемого в один (меняем ссылку на предыдущий в применяемом на ноль)
+        snapshots_before_accepted_file = (struct File *)snapshot_for_accept_header.prev_snapshot;
+        struct Snapshot_header snapshot_before_accept_header;
+
+        // сохраняем заголовок снапшота который можеты быть исправленн
+        pure_file_read(snapshots_before_accepted_file, &snapshot_before_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+
+        while (concat_snapshot(snapshots_before_accepted_file)) {}
+
+        // востанавливаем заголовок
+        pure_file_write(snapshots_before_accepted_file, &snapshot_before_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
+
+        // пишем все данные из конкатенированного снапшота в текущий    
+        while (file_read(snapshots_before_accepted_file, &address, ADDRESSSIZE, offset) == ADDRESSSIZE) {
+            file_read(snapshots_before_accepted_file, &value, VALUESIZE, offset + ADDRESSSIZE);
             virt_address = (uint8_t *)((uint64_t)address + DISKMAP);
             *virt_address = value;
-            offset += 5;
+            offset += FIELDSIZE;
         }
 
-        delete_snapshot(help_snap->f_name);
+        // может не надо
+        //fs_delete_snapshot(snapshots_before_accepted_file->f_name);
     
     }
     fs_sync();
@@ -1017,7 +1354,7 @@ accept_snapshot(const char *name) {
 
 //Удаляет снимок по имени.
 int
-delete_snapshot(const char *name) {
+fs_delete_snapshot(const char *name) {
 
     char lastelem[MAXNAMELEN];
     int r;
@@ -1085,14 +1422,21 @@ int fs_print_snapshot_list() {
     struct Snapshot_header header;
   
     if (!(*current_snapshot_file)) {
-        printf_debug("Try to print snapshot without them\n");
-        return 0;
+        if (!(*extra_snapshot_file)) {
+            printf_debug("Try to print snapshot without them\n");
+            return 0;   
+        } else {
+            printf_debug("Printing snapshots after disabling in accept\n");
+            flush_block(super);
+            snapshot_file = (struct File *)(*extra_snapshot_file);
+        }
+    } else {
+        snapshot_file = (struct File *)(*current_snapshot_file);
     }
         
-    snapshot_file = (struct File *)(*current_snapshot_file);
     file_read(snapshot_file, &header, sizeof(struct Snapshot_header), 0);
-    cprintf("___________  _________________________\n");
-    cprintf("           \\/\n");
+    cprintf("______________________________________\n");
+    cprintf("\n\n\n");
 
     internal_print_snapshot_list(snapshot_file, header);
 
@@ -1101,24 +1445,90 @@ int fs_print_snapshot_list() {
 
 int internal_print_snapshot_list(struct File *snap, struct Snapshot_header header) {
   
-  struct Snapshot_header help_header;
-  struct File *help_snap;
-  struct tm time;
+    printf_debug("Internal print for snapshot with name %s\n", snap->f_name);
 
-  if (header.prev_snapshot != 0) {
-    help_snap = (struct File *)(header.prev_snapshot);
-    file_read(help_snap, &help_header, sizeof(struct Snapshot_header), 0);
-    internal_print_snapshot_list(help_snap, help_header);
-  }
+    struct Snapshot_header help_header;
+    struct File *help_snap;
+    struct tm time;
 
-  mktime(header.date, &time);
+    if (header.prev_snapshot != 0) {
+        help_snap = (struct File *)(header.prev_snapshot);
+        file_read(help_snap, &help_header, sizeof(struct Snapshot_header), HEADERPOS);
+        internal_print_snapshot_list(help_snap, help_header);
+    }
 
-  cprintf("   Name: %s\n", snap->f_name);
-  cprintf("Comment: %s\n", header.comment);
-  cprintf("   Time: %d/%d/%d %d:%d:%d\n", time.tm_mday, time.tm_mon+1, time.tm_year+1900, (time.tm_hour+3)%24, time.tm_min-2, time.tm_sec);
+    mktime(header.date, &time);
+
+    cprintf("   Name: %s\n", snap->f_name);
+    cprintf("Comment: %s\n", header.comment);
+    cprintf("   Time: %d/%d/%d %d:%d:%d\n", time.tm_mday, time.tm_mon+1, time.tm_year+1900, (time.tm_hour+3)%24, time.tm_min-2, time.tm_sec);
   
-  cprintf("_____________________________________________\n");
-  cprintf("           \\/\n");
+    cprintf("_____________________________________________\n");
+    cprintf("\n\n\n");
 
   return 1;
 }
+
+/************************ functions end ************************************************************/
+
+/********************** snapshot end ***************************************************************/
+
+
+
+
+
+
+/********************** df start *******************************************************************/
+
+int 
+df_count_free_blocks() {
+    int free_blocks = 0;
+
+    for (blockno_t blockno = 1; blockno < super->s_nblocks; blockno++) {
+        if (block_is_free(blockno)) {
+            free_blocks++;
+        }
+    }
+
+    printf_debug("Total amount of blocks in super %d; amount of free blocks: %d\n", super->s_nblocks, free_blocks);
+
+    return free_blocks;
+}
+
+int 
+df_count_busy_blocks() {
+    int busy_blocks = 0;
+
+    for (blockno_t blockno = 1; blockno < super->s_nblocks; blockno++) {
+        if (!block_is_free(blockno)) {
+            busy_blocks++;
+        }
+    }
+
+    printf_debug("Total amount of blocks in super %d; amount of busy blocks: %d\n", super->s_nblocks, busy_blocks);
+
+    return busy_blocks;
+}
+
+int
+df_free_bytes() {
+    //debug_print_bitmap();
+
+    int free_blocks = df_count_free_blocks();
+
+    printf_debug("Block size: %lld; free space deep %lld\n", BLKSIZE , free_blocks * BLKSIZE);
+
+    return free_blocks * BLKSIZE;
+}
+
+int
+df_busy_bytes() {
+    //debug_print_bitmap();
+
+    int busy_blocks = df_count_busy_blocks();
+
+    printf_debug("Block size: %lld; busy space deep %lld\n", BLKSIZE , busy_blocks * BLKSIZE);
+
+    return busy_blocks * BLKSIZE;
+}
+/********************** df end *********************************************************************/

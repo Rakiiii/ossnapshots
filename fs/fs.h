@@ -11,6 +11,11 @@
 /* Maximum disk size we can handle (3GB) */
 #define DISKSIZE 0xC0000000
 
+#define ADDRESSSIZE 4
+#define VALUESIZE 1
+#define FIELDSIZE 5
+#define HEADERPOS 0
+
 extern struct Super *super; /* superblock */
 extern uint32_t *bitmap;    /* bitmap blocks mapped in memory */
 
@@ -49,14 +54,26 @@ void fs_test(void);
 /* snaphot */
 int printf_debug(const char *fmt, ...);
 
-int find_in_snapshot_list(struct File * f);
+bool find_in_snapshot_list(struct File * f);
 int find_in_snapshot(struct File * snapshot,uint64_t my_addr, off_t * offset);
+int snapshot_find_size(struct File * f);
+
+
+ssize_t pure_file_read(struct File *f, void *buf, size_t count, off_t offset);
+ssize_t pure_file_write(struct File *f, const void *buf, size_t count, off_t offset);
+
 int snapshot_file_read(struct File *f, void *buf, size_t count, off_t offset);
 int snapshot_file_write(struct File *f, const void *buf, size_t count, off_t offset);
-int merge_snapshot(struct File *snap);
-int snapshot_find_size(struct File * f);
+
+int concat_snapshot(struct File *snap);
 
 int fs_print_snapshot_list();
 int fs_create_snapshot(const char * comment, const char * name);
 int fs_accept_snapshot(const char *name);
 int fs_delete_snapshot(const char *name);
+
+/* df */
+int df_count_free_blocks();
+int df_count_busy_blocks();
+int df_free_bytes();
+int df_busy_bytes();

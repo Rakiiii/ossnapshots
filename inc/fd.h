@@ -26,6 +26,9 @@ struct Dev {
     int (*dev_sh_print)();
     int (*dev_sh_accept)(char *name);
     int (*dev_sh_delete)(char *name);
+    /**************** df *****************************************************/
+    int (*dev_df_free)();
+    int (*dev_df_busy)();
 };
 
 struct FdFile {
