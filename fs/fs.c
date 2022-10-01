@@ -13,7 +13,7 @@ uint32_t *bitmap;
 uint64_t * current_snapshot_file = 0;
 uint64_t * extra_snapshot_file = 0;
 
-bool SNAPSHOT_DEBUG = true;
+bool SNAPSHOT_DEBUG = false;
 
 #define printf_debug(M, ...) if (SNAPSHOT_DEBUG) cprintf("[%s:%d] Note: " M "\n",__FILE__, __LINE__,##__VA_ARGS__);
 
@@ -159,17 +159,6 @@ fs_init(void) {
     bitmap = diskaddr(2);
 
     check_bitmap();
-
-    // if ((*extra_snapshot_file != 0) && (*current_snapshot_file == 0)) {
-    //     //cprintf("help_curr_snap = %llx", (unsigned long long)*help_curr_snap);
-    //     *current_snapshot_file = *extra_snapshot_file;
-    //     *extra_snapshot_file = 0;
-    //     flush_block(super);
-    //     return 1;
-    // } else {
-    //     cprintf("Error in activate_snapshot();\n");
-    //     return 0;
-    // }
 }
 
 /* Find the disk block number slot for the 'filebno'th block in file 'f'.
@@ -470,30 +459,6 @@ file_write(struct File *f, const void *buf, size_t count, off_t offset) {
     }
 
     return pure_file_write(f, buf, count, offset);
-    // int r, bn;
-    // off_t pos;
-    // char *blk;
-
-    // // Extend file if necessary
-    // if (offset + count > f->f_size) {
-    //     if ((r = file_set_size(f, offset + count)) < 0) {
-    //         return r;
-    //     }
-    // }
-
-    // for (pos = offset; pos < offset + count;) {
-
-    //     if ((r = file_get_block(f, pos / BLKSIZE, &blk)) < 0) {
-    //         return r;
-    //     }
-
-    //     bn = MIN(BLKSIZE - pos % BLKSIZE, offset + count - pos);
-    //     memmove(blk + pos % BLKSIZE, buf, bn);
-    //     pos += bn;
-    //     buf += bn;
-    // }
-
-    // return count;
 }
 
 // Запись в файл без учета снапшотов
@@ -887,10 +852,6 @@ int snapshot_file_read(struct File *f, void *buf, size_t count, off_t offset) {
                 }
             }
             
-            // if (!is_address_found) {
-            //     pure_file_read(f, buf,)
-            // }
-            
 
             if (!snapshot_for_check_file) {
                 *(char *)buf = *addr;
@@ -1081,12 +1042,15 @@ int fs_create_snapshot(const char * comment, const char * name) {
     file_create_result = file_create(name, &new_snapshot_file);
 
     if (file_create_result == -E_FILE_EXISTS) {
+        cprintf("File for snapshot already exist\n");
         printf_debug("File for snapshot already exist\n");
         return file_create_result;
     } else if(file_create_result == -E_NOT_FOUND) {
+        cprintf("Directory for file for snapshot not found\n");
         printf_debug("Directory for file for snapshot not found\n");
         return file_create_result;
     } else if(file_create_result < 0) {
+        cprintf("File for snapshot cannot be created: error code %d\n", file_create_result);
         printf_debug("File for snapshot cannot be created: error code %d\n", file_create_result);
         return file_create_result;
     }
@@ -1123,12 +1087,6 @@ int fs_create_snapshot(const char * comment, const char * name) {
     addr = diskaddr(alloc_block_result);
     memcpy(addr, diskaddr(1), BLKSIZE);
     flush_block(addr);
-
-    /*
-        так как сделал free_block(r), чтобы old_bitmap был таким, как до создания снимка
-        bitmap[r / 32] &= ~(1 << (r % 32));
-        flush_block(&bitmap[r / 32]);
-    */
 
 
     new_snapshot_header.prev_snapshot = *current_snapshot_file;
@@ -1176,73 +1134,6 @@ int fs_create_snapshot(const char * comment, const char * name) {
   return 0;
 }
 
-// Применяет снимок по имени.
-// int
-// fs_accept_snapshot(const char *name) {
-
-//     struct Snapshot_header snapshot_for_accept_header;
-
-//     struct File *snapshot_for_accept_file;
-
-//     if (*current_snapshot_file) {
-//         snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
-//     } else {
-//         printf_debug("No snapshot created for accept\n");
-//         return 0;
-//     }
-  
-//     bool not_found_end_from_root = true;
-
-//     //ищем файл снапшота по названию
-//     while (strcmp(snapshot_for_accept_file->f_name, name) != 0) {
-
-//         file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-    
-//         if (snapshot_for_accept_header.prev_snapshot != 0 && not_found_end_from_root) {
-//             snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.prev_snapshot;
-//         } else {
-            
-//             if (not_found_end_from_root) {
-//                 snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
-//                 file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-//             }
-
-//             not_found_end_from_root = false;
-    
-//             if (snapshot_for_accept_header.next_snapshot != 0) {
-//                 snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.next_snapshot;
-//             } else {
-//                 snapshot_for_accept_file = (struct File *)(*current_snapshot_file);
-//                 file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-//                 printf_debug("There is no snapshot with name %s;\n", name);
-//                 printf_debug("Current snapshot name is %s\n", snapshot_for_accept_file->f_name);
-
-//                 if (snapshot_for_accept_header.next_snapshot != 0) {
-//                     snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.next_snapshot;
-//                     file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-
-//                     printf_debug("Next snapshot from current is %s\n", snapshot_for_accept_file->f_name);
-//                 }
-                
-//                 return 0;
-//             }
-
-//         }
-
-//         printf_debug("Checking snap %s\n", snapshot_for_accept_file->f_name);
-//     }
-
-//     // Читаем заголовок найденного снапшота
-//     file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-
-//     fs_sync();
-    
-//     *current_snapshot_file = snapshot_for_accept_header.prev_snapshot;
-//     flush_block(super);
-
-//     return 1;
-// }
-
 int
 fs_accept_snapshot(const char *name) {
 
@@ -1275,17 +1166,6 @@ fs_accept_snapshot(const char *name) {
     }
   
     //ищем файл снапшота по названию
-    // while (strcmp(snapshot_for_accept_file->f_name, name) != 0) {
-
-    //     file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-    
-    //     if (snapshot_for_accept_header.prev_snapshot != 0) {
-    //         snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.prev_snapshot;
-    //     } else {
-    //         printf_debug("There is no snapshot with name %s;\n", name);
-    //         return 0;
-    //     }
-    // }
 
     bool not_found_end_from_root = true;
 
@@ -1369,29 +1249,39 @@ fs_delete_snapshot(const char *name) {
         return 0;
     }
 
+    // ищем снапшот
     while (strcmp(snap->f_name, name) != 0) {
         
-        file_read(snap, &new_header, sizeof(struct Snapshot_header), 0);
+        file_read(snap, &new_header, sizeof(struct Snapshot_header), HEADERPOS);
         if (new_header.prev_snapshot != 0) {
             help_snap = snap;
             snap = (struct File *)new_header.prev_snapshot;
         } else {
+            cprintf("Snapshot does not exist\n");
             printf_debug("No snapshot for delete with name: %s\n", name);
             return 0;
         }
     }
 
+    // Приводим в соответствие текущий снапшоты
     if (!strcmp(help_snap->f_name, name)) {
-        file_read(help_snap, &new_header, sizeof(struct Snapshot_header), 0);
+        file_read(help_snap, &new_header, sizeof(struct Snapshot_header), HEADERPOS);
         *current_snapshot_file = new_header.prev_snapshot;
         flush_block(current_snapshot_file);
     } else {
-        file_read(snap, &help_header, sizeof(struct Snapshot_header), 0);
+        file_read(snap, &help_header, sizeof(struct Snapshot_header), HEADERPOS);
         new_header.prev_snapshot = help_header.prev_snapshot;
-        file_write(help_snap, &new_header, sizeof(struct Snapshot_header), 0);
+        file_write(help_snap, &new_header, sizeof(struct Snapshot_header), HEADERPOS);
     }
   
 
+    if(snap == (struct File *)(*current_snapshot_file)) {
+        if( new_header.prev_snapshot == 0) {
+            *current_snapshot_file = 0;
+        } else {
+            *current_snapshot_file = new_header.prev_snapshot;
+        }
+    }
     file_set_size(snap, 0);
   
     if ((r = walk_path(name, &dir, &f, lastelem)) != 0) {
@@ -1402,9 +1292,6 @@ fs_delete_snapshot(const char *name) {
             printf_debug("Some how snapshot files are not the same\n");
             return 0;
         }
-        
-        /*for(int i = 0; i <= MAXNAMELEN - 1; i++)
-        snap->f_name[i] = '\0';*/
         
         memset(snap, 0, sizeof(struct File));
     }
@@ -1424,6 +1311,7 @@ int fs_print_snapshot_list() {
     if (!(*current_snapshot_file)) {
         if (!(*extra_snapshot_file)) {
             printf_debug("Try to print snapshot without them\n");
+            cprintf("There is no snapshot\n");
             return 0;   
         } else {
             printf_debug("Printing snapshots after disabling in accept\n");
