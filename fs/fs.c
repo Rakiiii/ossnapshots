@@ -16,7 +16,7 @@ uint64_t *snapshot_file_dir = 0;
 uint64_t *snapshot_config_file = 0;
 uint64_t *current_snapshot_file = 0;
 
-bool SNAPSHOT_DEBUG = true;
+bool SNAPSHOT_DEBUG = false;
 
 #define printf_debug(M, ...) if (SNAPSHOT_DEBUG) cprintf("[%s:%d] Note: " M "\n",__FILE__, __LINE__,##__VA_ARGS__);
 
@@ -502,30 +502,47 @@ file_create(const char *path, struct File **pf) {
 
     printf_debug("Start of creating file %s\n", path);
 
-    char name[MAXNAMELEN];
-    int res;
-    struct File *dir, *filp;
+    struct Snapshot_header snapshot_header;
 
-    if ((res = walk_path(path, &dir, &filp, name)) == 0) { 
-        printf_debug("Two files with same names cannot be created: %s\n", name);
-        return -E_FILE_EXISTS;
+    struct File *snapshot_file = to_file(current_snapshot_file);
+
+    int pure_file_create_result = pure_file_create(path, pf);
+
+    if (pure_file_create_result == 0) {
+        printf_debug("File with path %s created\n", path);
+        
+        if(pure_file_read(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS) != HEADERSIZE) {
+            printf_debug("Cannot create file with path %s in snapshot %s because header cannot be readed\n", path, snapshot_file->f_name);
+            return -E_INVAL;
+        }
+
+        int counter = 0;
+        while(snapshot_header.created_files[counter] != 0) {
+            ++counter;
+        }
+
+        snapshot_header.created_files[counter] = (uint64_t) (*pf);
+        strcpy(snapshot_header.created_files_names[counter], path);
+
+        if(pure_file_write(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS) != HEADERSIZE) {
+            printf_debug("Cannot create file with path %s in snapshot %s because header cannot be updated\n", path, snapshot_file->f_name);
+            return -E_INVAL;
+        }
+
+        pure_file_flush(snapshot_file);
+
+    } else if (pure_file_create_result == -E_FILE_EXISTS){
+        printf_debug("File with path %s alllready exist\n", path);
+    } else {
+        panic("File with path %s cannot be created: errror %d\n", path, pure_file_create_result);
     }
-    if (res != -E_NOT_FOUND || dir == 0) return res;
-    if ((res = dir_alloc_file(dir, &filp)) < 0) return res;
 
-    strcpy(filp->f_name, name);
-
-    *pf = filp;
-    pure_file_flush(dir);
-
-    // todo adding created files ptr to special field in snapshot header
-
-    return 0;
+    return pure_file_create_result;
 }
 
 int
 pure_file_create(const char *path, struct File **pf) {
-    printf_debug("Start of creating file %s\n", path);
+    printf_debug("Start of real creating file %s\n", path);
 
     char name[MAXNAMELEN];
     int res;
@@ -1279,108 +1296,31 @@ fs_accept_snapshot(const char *name) {
 
     delete_tmp_snapshot();
 
-    struct File *last_snapshot_file = to_file(current_snapshot_file);
-
-    if (last_snapshot_file != to_file(root_snapshot_file)) {
-        delete_created_files_to_root(last_snapshot_file);
-    }
-    
-    // now create files
-
     // if exist must make it current (create all files that should be create, delete all that should not be created)
     // deleting files should be done by undo all creation too root 
+
+    struct File *last_snapshot_file = to_file(current_snapshot_file);
+
+    if (last_snapshot_file != snapshot_file_for_accept && last_snapshot_file != to_file(root_snapshot_file)) {
+        delete_created_files_to_root(last_snapshot_file);
+    }
+
     // creation should be done by creation all files from root to new current snapshot
+
+
+    if (last_snapshot_file != snapshot_file_for_accept) {
+        restore_files_from_snapshot(snapshot_file_for_accept);
+    }
+
+    *current_snapshot_file = (uint64_t) snapshot_file_for_accept;
+
     // create tmp snapshot
 
-    // struct Snapshot_header snapshot_for_accept_header;
+    fs_create_tmp_snapshot();
 
-    // struct File *snapshot_for_accept_file;
+    // sync fs
 
-    // struct File *snapshots_before_accepted_file;
-
-    // uint8_t *virt_address;
-
-    // uint32_t address;
-    // uint8_t value;
-    // off_t offset = sizeof(struct Snapshot_header);
-
-    // if (*old_current_snapshot_file) {
-    //     snapshot_for_accept_file = (struct File *)(*old_current_snapshot_file);
-    // } else {
-    //     if ((*extra_snapshot_file) != 0) {
-    //         *old_current_snapshot_file = *extra_snapshot_file;
-    //         *extra_snapshot_file = 0;
-    //         flush_block(super);
-    //         snapshot_for_accept_file = (struct File *)(*old_current_snapshot_file);
-    //     } else {
-    //         printf_debug("No snapshot created for accept\n");
-    //         return 0;
-    //     }
-    // }
-  
-    // //ищем файл снапшота по названию
-
-    // bool not_found_end_from_root = true;
-
-    // while (strcmp(snapshot_for_accept_file->f_name, name) != 0) {
-
-    //     file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-    
-    //     if (snapshot_for_accept_header.prev_snapshot != 0 && not_found_end_from_root) {
-    //         snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.prev_snapshot;
-    //     } else {
-            
-    //         if (not_found_end_from_root) {
-    //             snapshot_for_accept_file = (struct File *)(*old_current_snapshot_file);
-    //             file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-    //             not_found_end_from_root = false;
-    //         }
-    
-    //         // if (snapshot_for_accept_header.next_snapshot != 0) {
-    //         //     snapshot_for_accept_file = (struct File *)snapshot_for_accept_header.next_snapshot;
-    //         // } else {
-    //         //     printf_debug("There is no snapshot with name %s\n", name);
-    //             return 0;
-    //         // }
-
-    //     }
-    // }
-
-    // // Читаем заголовок найденного снапшота
-    // file_read(snapshot_for_accept_file, &snapshot_for_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-
-    // // если снепшот не корневой
-    // if (snapshot_for_accept_header.prev_snapshot != 0) {
-
-    //     //сливаем все снапшоты до применяемого в один (меняем ссылку на предыдущий в применяемом на ноль)
-    //     snapshots_before_accepted_file = (struct File *)snapshot_for_accept_header.prev_snapshot;
-    //     struct Snapshot_header snapshot_before_accept_header;
-
-    //     // сохраняем заголовок снапшота который можеты быть исправленн
-    //     pure_file_read(snapshots_before_accepted_file, &snapshot_before_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-
-    //     while (concat_snapshot(snapshots_before_accepted_file)) {}
-
-    //     // востанавливаем заголовок
-    //     pure_file_write(snapshots_before_accepted_file, &snapshot_before_accept_header, sizeof(struct Snapshot_header), HEADERPOS);
-
-    //     // пишем все данные из конкатенированного снапшота в текущий    
-    //     while (file_read(snapshots_before_accepted_file, &address, ADDRESSSIZE, offset) == ADDRESSSIZE) {
-    //         file_read(snapshots_before_accepted_file, &value, VALUESIZE, offset + ADDRESSSIZE);
-    //         virt_address = (uint8_t *)((uint64_t)address + DISKMAP);
-    //         *virt_address = value;
-    //         offset += FIELDSIZE;
-    //     }
-
-    //     // может не надо
-    //     //fs_delete_snapshot(snapshots_before_accepted_file->f_name);
-    
-    // }
-    // fs_sync();
-
-    // *extra_snapshot_file = *old_current_snapshot_file;
-    // *old_current_snapshot_file = 0;
-    // flush_block(super);
+    fs_sync();
 
     return 1;
 }
@@ -1408,7 +1348,7 @@ delete_created_files_to_root(struct File *snapshot_file) {
         ++counter;
     }
 
-    if (snapshot_header.prev_snapshot != to_file(root_snapshot_file)) {
+    if (((struct File *) snapshot_header.prev_snapshot) != to_file(root_snapshot_file)) {
         return delete_created_files_to_root((struct File *) snapshot_header.prev_snapshot);
     }
     
@@ -1420,9 +1360,9 @@ delete_tmp_snapshot() {
     // here tmp snapshot should be deleted (really deleted, not just flag update)
     printf_debug("Start deleting temporary snapshot\n");
 
-    int read_header_result;
+    int read_header_result, write_header_result;
 
-    struct File *snapshoted_file, *real_file; 
+    struct File *snapshoted_file, *real_file, *prev_snapshot_file; 
 
     struct Snapshot_header tmp_snapshot_header;
 
@@ -1444,7 +1384,7 @@ delete_tmp_snapshot() {
         ++counter;
     }
 
-    int counter = 0;
+    counter = 0;
     while(tmp_snapshot_header.created_files[counter] != 0) {
         real_file = (struct File *) tmp_snapshot_header.created_files[counter];
 
@@ -1454,15 +1394,86 @@ delete_tmp_snapshot() {
         ++counter;
     }
 
-    // todo should be changed to = 0 ???
+    // удаляем ссылку в предыдущем снапшоте
+    prev_snapshot_file = (struct File *)tmp_snapshot_header.prev_snapshot;
+
+    if((read_header_result = pure_file_read(prev_snapshot_file, &tmp_snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
+        printf_debug("Cannot read header of previous snapshot\n");
+        return read_header_result;
+    }
+
+    counter = 0;
+    while(tmp_snapshot_header.next_snapshot[counter] != (uint64_t) tmp_snapshot_file) {
+        ++counter;
+    }
+
+    tmp_snapshot_header.next_snapshot[counter] = 0;
+
+    if((write_header_result = pure_file_write(prev_snapshot_file, &tmp_snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
+        printf_debug("Cannot update header of previous snapshot\n");
+        return write_header_result;
+    }
+
     *current_snapshot_file = tmp_snapshot_header.prev_snapshot;
 
     pure_file_set_size(tmp_snapshot_file, 0);
     memset(tmp_snapshot_file, 0, sizeof(struct File));
 
+    return 0;
+}
 
-    //надо ли этого сделать
-    // *current_snapshot_file = 0;
+int
+restore_files_from_snapshot(struct File *snapshot_file) {
+    printf_debug("Start creating files for snapshot %s\n", snapshot_file->f_name);
+
+    int read_header_result, write_header_result, restore_files_from_snapshot_result, pure_file_create_result;
+
+    struct File *real_file; 
+
+    struct Snapshot_header snapshot_header;
+
+    if((read_header_result = pure_file_read(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
+        printf_debug("Cannot read header of snapshot %s\n", snapshot_file->f_name);
+        return read_header_result;
+    }
+
+    if (((struct File *) snapshot_header.prev_snapshot) != to_file(root_snapshot_file)) {
+    
+        restore_files_from_snapshot_result = restore_files_from_snapshot((struct File *) snapshot_header.prev_snapshot);
+
+        if (restore_files_from_snapshot_result != 0) {
+            printf_debug("Cannot restore files from snapshot %s\n", ((struct File *) snapshot_header.prev_snapshot)->f_name);
+            return restore_files_from_snapshot_result;
+        }
+
+        int counter = 0;
+        while(snapshot_header.created_files[counter] != 0) {
+            // real_file = (struct File *) snapshot_header.created_files[counter];
+
+            pure_file_create_result = pure_file_create(snapshot_header.created_files_names[counter], &real_file);
+
+            if (pure_file_create_result == 0)  {
+                printf_debug("File %s from snapshot %s restored\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
+            } else if (pure_file_create_result == -E_FILE_EXISTS){
+                printf_debug("File %s from snapshot %s already exist, should not happen\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
+                return pure_file_create_result;
+            } else {
+                printf_debug("File %s from snapshot %s cannot be created\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
+                return pure_file_create_result;
+            }
+
+            snapshot_header.created_files[counter] = (uint64_t) real_file;
+
+            ++counter;
+        }
+
+        if((write_header_result = pure_file_write(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
+            printf_debug("Cannot update header of snapshot %s\n", snapshot_file->f_name);
+            return read_header_result;
+        }
+    }
+
+    return 0;
 }
 
 //Удаляет снимок по имени.
@@ -1604,10 +1615,11 @@ fs_print_snapshot_list() {
 
 bool
 internal_print_snapshot_list(struct File *snap, struct Snapshot_header header) {
-  
     printf_debug("Internal print for snapshot with name %s\n", snap->f_name);
 
     bool is_any_snapshots_printed = false;
+
+    int counter;
 
     struct Snapshot_header next_snapshot_header;
 
@@ -1616,15 +1628,31 @@ internal_print_snapshot_list(struct File *snap, struct Snapshot_header header) {
     struct tm time;
 
     // todo:: change back before pr
-    if (!header.is_deleted) {//&& snap != to_file(current_snapshot_file)) { 
+    if (!header.is_deleted && snap != to_file(current_snapshot_file) && snap != to_file(root_snapshot_file)) { 
         is_any_snapshots_printed = true;
 
         mktime(header.date, &time);
 
-        cprintf("   Name: %s\n", snap->f_name);
-        cprintf("Comment: %s\n", header.comment);
-        cprintf("   Time: %d/%d/%d %d:%d:%d\n", time.tm_mday, time.tm_mon+1, time.tm_year+1900, (time.tm_hour+3)%24, time.tm_min-2, time.tm_sec);
-  
+        cprintf("          Name: %s\n", snap->f_name);
+        cprintf("       Comment: %s\n", header.comment);
+        cprintf("          Time: %d/%d/%d %d:%d:%d\n", time.tm_mday, time.tm_mon+1, time.tm_year+1900, (time.tm_hour+3)%24, time.tm_min-2, time.tm_sec);
+
+        cprintf("          Prev: %s\n", ((struct File *)header.prev_snapshot)->f_name);
+        cprintf("Modified files: [");
+        counter = 0;
+        while(header.modified_files[counter] != 0) {
+            cprintf(" %s;", ((struct File *)header.modified_files[counter])->f_name);
+            ++counter;
+        }
+        cprintf(" ]\n");
+        cprintf(" Created files: [");
+        counter = 0;
+        while(header.created_files[counter] != 0) {
+            cprintf(" %s;", header.created_files_names[counter]);
+            ++counter;
+        }
+        cprintf(" ]\n");
+
         cprintf("_____________________________________________\n");
         cprintf("\n\n\n");
     }

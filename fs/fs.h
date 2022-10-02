@@ -61,10 +61,6 @@ blockno_t alloc_block(void);
 void fs_test(void);
 
 /* snaphot */
-// bool find_in_snapshot_list(struct File * f);
-// int find_in_snapshot(struct File * snapshot,uint64_t my_addr, off_t * offset);
-// int snapshot_find_size(struct File * f);
-
 int resolve_file_for_read(struct File **pfile, struct File *snapshot_file);
 int resolve_file_for_write(struct File **pfile, struct File *snapshot_file);
 int create_and_copy(struct File **dstfile, struct File **srcfile);
@@ -79,6 +75,7 @@ int find_snapshot_file_by_name(const char *name, struct File *root_snapshot_file
 int fs_create_tmp_snapshot();
 int delete_tmp_snapshot();
 int delete_created_files_to_root(struct File *snapshot_file);
+int restore_files_from_snapshot(struct File *snapshot_file);
 
 int fs_print_snapshot_list();
 int fs_create_snapshot(const char * comment, const char * name);

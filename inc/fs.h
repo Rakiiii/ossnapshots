@@ -38,7 +38,7 @@ typedef uint32_t blockno_t;
 #define MAX_SH_LENGTH 256
 
 #define MAXBRANCHES 10
-#define MAXFILESSNAP 100
+#define MAXFILESSNAP 10
 
 /***************************** snaphot defines end  ******************************/
 
@@ -158,7 +158,9 @@ struct Snapshot_header
   uint64_t next_snapshot[MAXBRANCHES];
 
   uint64_t modified_files[MAXFILESSNAP];
+
   uint64_t created_files[MAXFILESSNAP];
+  char created_files_names[MAXFILESSNAP][MAXNAMELEN];
 };
 
 struct Snapshot_config 

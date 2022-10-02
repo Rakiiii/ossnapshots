@@ -1,4 +1,5 @@
 #include <inc/lib.h>
+#include <inc/string.h>
 
 int flag[256];
 
@@ -14,13 +15,13 @@ ls(const char *path, const char *prefix) {
         panic("stat %s: %i", path, r);
     if (st.st_isdir && !flag['d'])
         lsdir(path, prefix);
-    else
+    else 
         ls1(0, st.st_isdir, st.st_size, path);
 }
 
 void
 lsdir(const char *path, const char *prefix) {
-    // cprintf("lsdir start\n");
+    //cprintf("lsdir\n");
     int fd, n;
     struct File f;
 
@@ -37,7 +38,7 @@ lsdir(const char *path, const char *prefix) {
 
 void
 ls1(const char *prefix, bool isdir, off_t size, const char *name) {
-    // cprintf("ls1 start\n");
+    //cprintf("ls1\n");
     const char *sep;
 
     if (flag['l'])
@@ -49,10 +50,14 @@ ls1(const char *prefix, bool isdir, off_t size, const char *name) {
             sep = "";
         printf("%s%s", prefix, sep);
     }
-    printf("%s", name);
-    if (flag['F'] && isdir)
-        printf("/");
-    printf("\n");
+    if (strcmp(name,".snapshots")) {
+        printf("%s", name);
+        
+        if (flag['F'] && isdir)
+            printf("/");
+        
+        printf("\n");
+    }
 }
 
 void
