@@ -23,4 +23,6 @@ void *memfind(const void *s, int c, size_t len);
 
 long strtol(const char *s, char **endptr, int base);
 
+int itoa(int num, char *str, int len, int base);
+
 #endif /* not JOS_INC_STRING_H */

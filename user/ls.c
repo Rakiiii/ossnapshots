@@ -20,6 +20,7 @@ ls(const char *path, const char *prefix) {
 
 void
 lsdir(const char *path, const char *prefix) {
+    // cprintf("lsdir start\n");
     int fd, n;
     struct File f;
 
@@ -36,6 +37,7 @@ lsdir(const char *path, const char *prefix) {
 
 void
 ls1(const char *prefix, bool isdir, off_t size, const char *name) {
+    // cprintf("ls1 start\n");
     const char *sep;
 
     if (flag['l'])
@@ -61,7 +63,7 @@ usage(void) {
 
 void
 umain(int argc, char **argv) {
-    cprintf("ls start\n");
+    // cprintf("ls start\n");
     int i;
     struct Argstate args;
 

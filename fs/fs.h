@@ -11,10 +11,19 @@
 /* Maximum disk size we can handle (3GB) */
 #define DISKSIZE 0xC0000000
 
+#define SNAPDIR ".snapshots/"
+#define SNAPFILESEP "."
+
+#define SNAPCFG ".snapshots/cfg"
+#define ROOTSNAP "root_snapshot"
+#define TMPSNAP "tmp_snapshot_internal"
+
 #define ADDRESSSIZE 4
 #define VALUESIZE 1
 #define FIELDSIZE 5
 #define HEADERPOS 0
+
+#define HEADERSIZE sizeof(struct Snapshot_header)
 
 extern struct Super *super; /* superblock */
 extern uint32_t *bitmap;    /* bitmap blocks mapped in memory */
@@ -52,20 +61,24 @@ blockno_t alloc_block(void);
 void fs_test(void);
 
 /* snaphot */
-int printf_debug(const char *fmt, ...);
+// bool find_in_snapshot_list(struct File * f);
+// int find_in_snapshot(struct File * snapshot,uint64_t my_addr, off_t * offset);
+// int snapshot_find_size(struct File * f);
 
-bool find_in_snapshot_list(struct File * f);
-int find_in_snapshot(struct File * snapshot,uint64_t my_addr, off_t * offset);
-int snapshot_find_size(struct File * f);
+int resolve_file_for_read(struct File **pfile, struct File *snapshot_file);
+int resolve_file_for_write(struct File **pfile, struct File *snapshot_file);
+int create_and_copy(struct File **dstfile, struct File **srcfile);
 
-
+int pure_file_create(const char *path, struct File **f);
 ssize_t pure_file_read(struct File *f, void *buf, size_t count, off_t offset);
 ssize_t pure_file_write(struct File *f, const void *buf, size_t count, off_t offset);
+int pure_file_set_size(struct File *f, off_t newsize);
+void pure_file_flush(struct File *f);
 
-int snapshot_file_read(struct File *f, void *buf, size_t count, off_t offset);
-int snapshot_file_write(struct File *f, const void *buf, size_t count, off_t offset);
-
-int concat_snapshot(struct File *snap);
+int find_snapshot_file_by_name(const char *name, struct File *root_snapshot_file, struct File **psnapshot_file);
+int fs_create_tmp_snapshot();
+int delete_tmp_snapshot();
+int delete_created_files_to_root(struct File *snapshot_file);
 
 int fs_print_snapshot_list();
 int fs_create_snapshot(const char * comment, const char * name);

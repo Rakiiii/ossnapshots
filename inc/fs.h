@@ -37,6 +37,9 @@ typedef uint32_t blockno_t;
 #define SNAP_BUF_SIZE 100
 #define MAX_SH_LENGTH 256
 
+#define MAXBRANCHES 10
+#define MAXFILESSNAP 100
+
 /***************************** snaphot defines end  ******************************/
 
 struct File {
@@ -145,17 +148,23 @@ union Fsipc {
 /***************************** snaphot structures start ******************************/
 struct Snapshot_header
 {
+
   int date;
   char comment[100];
+  bool is_deleted;
+
   uint32_t old_bitmap;
   uint64_t prev_snapshot;
-  uint64_t next_snapshot;
+  uint64_t next_snapshot[MAXBRANCHES];
+
+  uint64_t modified_files[MAXFILESSNAP];
+  uint64_t created_files[MAXFILESSNAP];
 };
 
-struct Snapshot_table
+struct Snapshot_config 
 {
-  uint32_t disk_addr;
-  char value;
+    char root_snapshot_name[MAXNAMELEN];
+    char current_snapshot_name[MAXNAMELEN];
 };
 /***************************** snaphot structures end  ******************************/
 
