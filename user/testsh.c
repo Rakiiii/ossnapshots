@@ -81,18 +81,23 @@ umain(int argc, char **argv) {
 
     fd = open(TEST_FILE_NAME, O_RDONLY);
     read(fd, buf, snap3.data_size);
-    // cprintf("snap3 data: %s; but expected: %s\n", buf, snap3.data);
-    assert(!strcmp(buf, snap3.data));
     close(fd);
+    cprintf("snap3 data: %s; but expected: %s\n", buf, snap3.data);
+    assert(!strcmp(buf, snap3.data));
 
     accept_snapshot(snap4.name);
 
-    // print_snapshot_list();
+    //print_snapshot_list();
 
     fd = open(TEST_FILE_NAME, O_RDONLY);
-    read(fd, buf, snap4.data_size);
-    assert(!strcmp(buf, snap4.data));
+    int res;
+    if((res = read(fd, buf, snap4.data_size)) < 0) {
+        cprintf("Cannot read from file test, error%d\n", res);
+        assert(false);
+    }
     close(fd);
+    cprintf("snap4 readed data %s expected %s\n", buf, snap4.data);
+    assert(!strcmp(buf, snap4.data));
 
     accept_snapshot(snap3.name);
 

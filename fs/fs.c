@@ -1327,6 +1327,8 @@ fs_accept_snapshot(const char *name) {
 
 int
 delete_created_files_to_root(struct File *snapshot_file) {
+    printf_debug("Start deleting files that was created in snapshot %s\n", snapshot_file->f_name);
+
     int read_header_result;
 
     struct File *real_file; 
@@ -1341,6 +1343,8 @@ delete_created_files_to_root(struct File *snapshot_file) {
     int counter = 0;
     while(snapshot_header.created_files[counter] != 0) {
         real_file = (struct File *) snapshot_header.created_files[counter];
+
+        printf_debug("File %s was deleted\n", real_file->f_name);
 
         pure_file_set_size(real_file, 0);
         memset(real_file, 0, sizeof(struct File));
@@ -1424,7 +1428,7 @@ delete_tmp_snapshot() {
 
 int
 restore_files_from_snapshot(struct File *snapshot_file) {
-    printf_debug("Start creating files for snapshot %s\n", snapshot_file->f_name);
+    printf_debug("Start restoring files from snapshot %s\n", snapshot_file->f_name);
 
     int read_header_result, write_header_result, restore_files_from_snapshot_result, pure_file_create_result;
 
@@ -1445,32 +1449,33 @@ restore_files_from_snapshot(struct File *snapshot_file) {
             printf_debug("Cannot restore files from snapshot %s\n", ((struct File *) snapshot_header.prev_snapshot)->f_name);
             return restore_files_from_snapshot_result;
         }
+    }
 
-        int counter = 0;
-        while(snapshot_header.created_files[counter] != 0) {
-            // real_file = (struct File *) snapshot_header.created_files[counter];
+    int counter = 0;
+    while(snapshot_header.created_files[counter] != 0) {
 
-            pure_file_create_result = pure_file_create(snapshot_header.created_files_names[counter], &real_file);
+        pure_file_create_result = pure_file_create(snapshot_header.created_files_names[counter], &real_file);
 
-            if (pure_file_create_result == 0)  {
-                printf_debug("File %s from snapshot %s restored\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
-            } else if (pure_file_create_result == -E_FILE_EXISTS){
-                printf_debug("File %s from snapshot %s already exist, should not happen\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
-                return pure_file_create_result;
-            } else {
-                printf_debug("File %s from snapshot %s cannot be created\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
-                return pure_file_create_result;
-            }
-
-            snapshot_header.created_files[counter] = (uint64_t) real_file;
-
-            ++counter;
+        if (pure_file_create_result == 0)  {
+            printf_debug("File %s from snapshot %s restored\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
+        } else if (pure_file_create_result == -E_FILE_EXISTS){
+            printf_debug("File %s from snapshot %s already exist, should not happen\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
+            return pure_file_create_result;
+        } else {
+            printf_debug("File %s from snapshot %s cannot be created\n", snapshot_header.created_files_names[counter], snapshot_file->f_name);
+            return pure_file_create_result;
         }
 
-        if((write_header_result = pure_file_write(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
-            printf_debug("Cannot update header of snapshot %s\n", snapshot_file->f_name);
-            return read_header_result;
-        }
+        snapshot_header.created_files[counter] = (uint64_t) real_file;
+
+        printf_debug("File %s was restored\n", real_file->f_name);
+
+        ++counter;
+    }
+
+    if((write_header_result = pure_file_write(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
+        printf_debug("Cannot update header of snapshot %s\n", snapshot_file->f_name);
+        return read_header_result;
     }
 
     return 0;
