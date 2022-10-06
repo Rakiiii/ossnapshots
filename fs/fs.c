@@ -64,6 +64,15 @@ debug_print_bitmap() {
 static bool
 internal_print_snapshot_list(struct File *snap, struct Snapshot_header header);
 
+static bool
+internal_print_deleted_snapshot_created_file_list(struct File *snapshot_file);
+
+static bool
+internal_print_deleted_snapshot_modified_file_list(struct File *snapshot_file);
+
+static bool
+internal_print_previous(struct File *snapshot_file);
+
 static int
 strcmp_snapshoted(char *snapshoted_file_name, char *file_name);
 /********************************************************** snapshot endregion *************/
@@ -1303,6 +1312,8 @@ fs_accept_snapshot(const char *name) {
 
     if (last_snapshot_file != snapshot_file_for_accept && last_snapshot_file != to_file(root_snapshot_file)) {
         delete_created_files_to_root(last_snapshot_file);
+    } else {
+        printf_debug("Created files are must not be deleted because snapshot %s is current and accepted is %s\n",last_snapshot_file->f_name, snapshot_file_for_accept->f_name);
     }
 
     // creation should be done by creation all files from root to new current snapshot
@@ -1418,7 +1429,9 @@ delete_tmp_snapshot() {
         return write_header_result;
     }
 
-    *current_snapshot_file = tmp_snapshot_header.prev_snapshot;
+
+    // todo DO NOT REUSE HEADERS
+    *current_snapshot_file = (uint64_t) prev_snapshot_file;
 
     pure_file_set_size(tmp_snapshot_file, 0);
     memset(tmp_snapshot_file, 0, sizeof(struct File));
@@ -1642,12 +1655,25 @@ internal_print_snapshot_list(struct File *snap, struct Snapshot_header header) {
         cprintf("       Comment: %s\n", header.comment);
         cprintf("          Time: %d/%d/%d %d:%d:%d\n", time.tm_mday, time.tm_mon+1, time.tm_year+1900, (time.tm_hour+3)%24, time.tm_min-2, time.tm_sec);
 
-        cprintf("          Prev: %s\n", ((struct File *)header.prev_snapshot)->f_name);
+        // cprintf("          Prev: %s\n", ((struct File *)header.prev_snapshot)->f_name);
+        cprintf("          Prev: ");
+        internal_print_previous((struct File *)header.prev_snapshot);
+        cprintf("\n");
         cprintf("Modified files: [");
         counter = 0;
         while(header.modified_files[counter] != 0) {
-            cprintf(" %s;", ((struct File *)header.modified_files[counter])->f_name);
+
+            char file_name[MAXNAMELEN];
+            file_name[0] = '\0';
+            char *pseparator = strfind(((struct File *)header.modified_files[counter])->f_name, SNAPFILESEP[0]);
+            int separator_position = pseparator - ((struct File *)header.modified_files[counter])->f_name;
+            strncpy(file_name, ((struct File *)header.modified_files[counter])->f_name, separator_position);
+
+            cprintf(" %s;", file_name);
             ++counter;
+        }
+        if((struct File *)header.prev_snapshot != to_file(root_snapshot_file)) {
+            internal_print_deleted_snapshot_modified_file_list((struct File *)header.prev_snapshot);
         }
         cprintf(" ]\n");
         cprintf(" Created files: [");
@@ -1655,6 +1681,9 @@ internal_print_snapshot_list(struct File *snap, struct Snapshot_header header) {
         while(header.created_files[counter] != 0) {
             cprintf(" %s;", header.created_files_names[counter]);
             ++counter;
+        }
+        if((struct File *)header.prev_snapshot != to_file(root_snapshot_file)) {
+            internal_print_deleted_snapshot_created_file_list((struct File *)header.prev_snapshot);
         }
         cprintf(" ]\n");
 
@@ -1674,6 +1703,107 @@ internal_print_snapshot_list(struct File *snap, struct Snapshot_header header) {
     }
 
     return is_any_snapshots_printed;
+}
+
+bool
+internal_print_deleted_snapshot_modified_file_list(struct File *snapshot_file) {
+    
+    int read_header_result;
+    
+    struct Snapshot_header snapshot_header;
+
+    if ((read_header_result = pure_file_read(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
+        printf_debug("Cannot read header for previous snapshot %s to print modified if deleted\n", snapshot_file->f_name);
+        return false;
+    }
+
+    if (snapshot_header.is_deleted) {
+        
+        int counter = 0;
+        while(snapshot_header.modified_files[counter] != 0) {
+            char file_name[MAXNAMELEN];
+            file_name[0] = '\0';
+            char *pseparator = strfind(((struct File *)snapshot_header.modified_files[counter])->f_name, SNAPFILESEP[0]);
+            int separator_position = pseparator - ((struct File *)snapshot_header.modified_files[counter])->f_name;
+            strncpy(file_name, ((struct File *)snapshot_header.modified_files[counter])->f_name, separator_position);
+            // todo construct name without file extrnsion
+            // static int
+            // strcmp_snapshoted(char *sfile_name, char *file_name) {
+            // char *pseparator = strfind(sfile_name + 1, SNAPFILESEP[0]);
+
+            // int separator_position = pseparator - sfile_name;
+
+            // return strncmp(sfile_name, file_name, separator_position);
+            // }
+
+
+            // cprintf(" %s;", ((struct File *)snapshot_header.modified_files[counter])->f_name);
+            cprintf(" %s;",file_name);
+            ++counter;
+        }
+
+        if((struct File *)snapshot_header.prev_snapshot != to_file(root_snapshot_file)) {
+            internal_print_deleted_snapshot_modified_file_list((struct File *)snapshot_header.prev_snapshot);
+        }
+
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool
+internal_print_deleted_snapshot_created_file_list(struct File *snapshot_file) {
+    
+    int read_header_result;
+    
+    struct Snapshot_header snapshot_header;
+
+    if ((read_header_result = pure_file_read(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
+        printf_debug("Cannot read header for previous snapshot %s to print created if deleted\n", snapshot_file->f_name);
+        return false;
+    }
+
+    if (snapshot_header.is_deleted) {
+        
+        int counter = 0;
+        while(snapshot_header.created_files[counter] != 0) {
+            cprintf(" %s;", snapshot_header.created_files_names[counter]);
+            ++counter;
+        }
+
+        if((struct File *)snapshot_header.prev_snapshot != to_file(root_snapshot_file)) {
+            internal_print_deleted_snapshot_created_file_list((struct File *)snapshot_header.prev_snapshot);
+        }
+
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool
+internal_print_previous(struct File *snapshot_file) {
+    int read_header_result;
+    
+    struct Snapshot_header snapshot_header;
+
+    if ((read_header_result = pure_file_read(snapshot_file, &snapshot_header, HEADERSIZE, HEADERPOS)) != HEADERSIZE) {
+        printf_debug("Cannot read header for previous snapshot %s to print created if deleted\n", snapshot_file->f_name);
+        return false;
+    }
+
+    if (snapshot_header.is_deleted) {
+        if((struct File *)snapshot_header.prev_snapshot != to_file(root_snapshot_file)) {
+            internal_print_previous((struct File *)snapshot_header.prev_snapshot);
+        } else {
+            cprintf("%s", ((struct File *)snapshot_header.prev_snapshot)->f_name);
+        }
+    } else {
+        cprintf("%s", snapshot_file->f_name);
+    }
+
+    return true;
 }
 
 /************************ functions end ************************************************************/
